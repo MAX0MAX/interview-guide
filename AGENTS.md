@@ -43,13 +43,24 @@ Frontend starts on `http://localhost:5173`. Vite proxies `/api` to `localhost:80
 
 ### Running tests
 
-- **Backend**: `./gradlew :app:test` — runs JUnit 5 tests. 5 `QwenTtsService` tests fail without a valid `AI_BAILIAN_API_KEY`; all other tests pass using the H2 in-memory database.
-- **Frontend**: `pnpm build` (in `frontend/`) runs `tsc && vite build`. There are 3 pre-existing TS unused-variable errors; these don't affect `pnpm dev`.
+- **Backend**: `./gradlew :app:test` — runs JUnit 5 tests. 5 `QwenTtsService` tests are pre-existing failures (reflection field mismatch, not API key related); 190 tests pass. Tests use H2 in-memory database, no external services needed.
+- **Frontend**: `pnpm build` (in `frontend/`) runs `tsc && vite build`. There are 3 pre-existing TS unused-variable errors that block `tsc`; these don't affect `pnpm dev`.
+
+### Environment variable: AI_BAILIAN_API_KEY
+
+Set via the Cursor Cloud Secrets panel. The backend reads it from `.env` at repo root (Gradle `bootRun` task loads it). Without a valid key: app starts, CRUD APIs work, but all AI features (resume analysis, mock interview, RAG, voice interview) return errors. The `AI_BAILIAN_API_KEY` secret is automatically injected as an environment variable — write it into `.env` before running `bootRun`:
+
+```bash
+cp .env.example .env
+sed -i "s|^AI_BAILIAN_API_KEY=.*|AI_BAILIAN_API_KEY=${AI_BAILIAN_API_KEY}|" .env
+```
 
 ### Gotchas
 
 - Docker daemon requires `fuse-overlayfs` storage driver and `iptables-legacy` in the Cloud Agent VM. See the Docker setup section in the system instructions.
 - The `dockerd` must be started manually: `sudo dockerd &>/tmp/dockerd.log &`.
+- After `docker compose up -d postgres redis minio createbuckets`, the MinIO bucket must also be created from the host network (see "Infrastructure services" section above). The `createbuckets` init container only creates it on the Docker-internal network.
 - `pnpm install` in `frontend/` may show warnings about ignored build scripts (`@swc/core`, `esbuild`, `protobufjs`). These are non-blocking; the dev server works fine.
 - The `packageManager` field in `frontend/package.json` pins pnpm 10.26.2. The VM may have a newer version pre-installed; this is compatible.
 - The Gradle wrapper downloads Gradle 8.14 on first run (~2.5 GB JDK toolchain + dependencies). Subsequent runs are fast.
+- Resume upload requires MinIO bucket to exist and be accessible from localhost:9000. If you get "bucket does not exist" errors, re-run the host-network MinIO bucket creation command.

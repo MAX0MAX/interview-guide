@@ -4,6 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -13,6 +14,7 @@ import java.util.Map;
 public class LlmProviderProperties {
     private String defaultProvider = "dashscope";
     private Map<String, ProviderConfig> providers;
+    private Map<String, String> moduleDefaults = new HashMap<>();
     private AdvisorConfig advisors = new AdvisorConfig();
 
     @Data
@@ -20,6 +22,8 @@ public class LlmProviderProperties {
         private String baseUrl;
         private String apiKey;
         private String model;
+        private boolean enabled = true;
+        private String embeddingModel;
     }
 
     @Data

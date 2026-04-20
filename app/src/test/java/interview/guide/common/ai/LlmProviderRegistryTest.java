@@ -2,6 +2,7 @@ package interview.guide.common.ai;
 
 import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
+import interview.guide.common.exception.BusinessException;
 import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -17,6 +18,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -116,5 +118,68 @@ class LlmProviderRegistryTest {
 
         // Then
         assertNotNull(client);
+    }
+
+    @Test
+    @DisplayName("reload clears cache and allows re-creation")
+    void testReload() {
+        String providerId = "test-provider";
+        ProviderConfig config = new ProviderConfig();
+        config.setBaseUrl("http://localhost:1234/v1");
+        config.setApiKey("test-key");
+        config.setModel("test-model");
+
+        Map<String, ProviderConfig> providers = new HashMap<>();
+        providers.put(providerId, config);
+
+        when(properties.getProviders()).thenReturn(providers);
+
+        ChatClient client1 = registry.getChatClient(providerId);
+        registry.reload();
+        when(properties.getProviders()).thenReturn(providers);
+        ChatClient client2 = registry.getChatClient(providerId);
+
+        assertNotNull(client1);
+        assertNotNull(client2);
+        assertNotSame(client1, client2, "After reload, new client should be created");
+    }
+
+    @Test
+    @DisplayName("getModuleDefaultProvider returns mapped provider id")
+    void testGetModuleDefaultProvider() {
+        Map<String, String> defaults = new HashMap<>();
+        defaults.put("interview", "dashscope");
+        defaults.put("resume", "lmstudio");
+        when(properties.getModuleDefaults()).thenReturn(defaults);
+
+        assertEquals("dashscope", registry.getModuleDefaultProvider("interview"));
+        assertEquals("lmstudio", registry.getModuleDefaultProvider("resume"));
+    }
+
+    @Test
+    @DisplayName("getModuleDefaultProvider falls back to global default")
+    void testGetModuleDefaultProvider_fallback() {
+        when(properties.getModuleDefaults()).thenReturn(new HashMap<>());
+        when(properties.getDefaultProvider()).thenReturn("dashscope");
+
+        assertEquals("dashscope", registry.getModuleDefaultProvider("unknown-module"));
+    }
+
+    @Test
+    @DisplayName("getChatClient throws for disabled provider")
+    void testGetChatClient_disabledProvider() {
+        String providerId = "disabled-provider";
+        ProviderConfig config = new ProviderConfig();
+        config.setBaseUrl("http://localhost:1234/v1");
+        config.setApiKey("test-key");
+        config.setModel("test-model");
+        config.setEnabled(false);
+
+        Map<String, ProviderConfig> providers = new HashMap<>();
+        providers.put(providerId, config);
+
+        when(properties.getProviders()).thenReturn(providers);
+
+        assertThrows(BusinessException.class, () -> registry.getChatClient(providerId));
     }
 }

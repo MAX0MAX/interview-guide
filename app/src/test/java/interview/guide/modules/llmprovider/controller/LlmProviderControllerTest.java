@@ -1,62 +1,65 @@
 package interview.guide.modules.llmprovider.controller;
 
-import interview.guide.modules.llmprovider.dto.*;
+import interview.guide.common.result.Result;
+import interview.guide.modules.llmprovider.dto.ModuleDefaultsDTO;
+import interview.guide.modules.llmprovider.dto.ProviderDTO;
 import interview.guide.modules.llmprovider.service.LlmProviderConfigService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.test.web.servlet.MockMvc;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(LlmProviderController.class)
+@ExtendWith(MockitoExtension.class)
 @DisplayName("LlmProviderController Test")
 class LlmProviderControllerTest {
 
-    @Autowired private MockMvc mockMvc;
-    @MockBean private LlmProviderConfigService configService;
+    @Mock private LlmProviderConfigService configService;
+    @InjectMocks private LlmProviderController controller;
 
     @Test
-    @DisplayName("GET /api/llm-provider/list returns provider list")
-    void testListProviders() throws Exception {
+    @DisplayName("listProviders returns provider list")
+    void testListProviders() {
         var dto = ProviderDTO.builder()
             .id("dashscope").baseUrl("http://test").maskedApiKey("sk-***key")
             .model("qwen").embeddingModel("text-embedding-v3").enabled(true).build();
         when(configService.listProviders()).thenReturn(List.of(dto));
 
-        mockMvc.perform(get("/api/llm-provider/list"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(200))
-            .andExpect(jsonPath("$.data[0].id").value("dashscope"));
+        Result<List<ProviderDTO>> result = controller.listProviders();
+
+        assertEquals(200, result.getCode());
+        assertEquals(1, result.getData().size());
+        assertEquals("dashscope", result.getData().get(0).id());
     }
 
     @Test
-    @DisplayName("GET /api/llm-provider/module-defaults returns defaults")
-    void testGetModuleDefaults() throws Exception {
+    @DisplayName("getModuleDefaults returns defaults")
+    void testGetModuleDefaults() {
         when(configService.getModuleDefaults())
             .thenReturn(new ModuleDefaultsDTO(Map.of("interview", "dashscope")));
 
-        mockMvc.perform(get("/api/llm-provider/module-defaults"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.moduleDefaults.interview").value("dashscope"));
+        Result<ModuleDefaultsDTO> result = controller.getModuleDefaults();
+
+        assertEquals(200, result.getCode());
+        assertEquals("dashscope", result.getData().moduleDefaults().get("interview"));
     }
 
     @Test
-    @DisplayName("DELETE /api/llm-provider/{id} calls service")
-    void testDeleteProvider() throws Exception {
+    @DisplayName("deleteProvider calls service")
+    void testDeleteProvider() {
         doNothing().when(configService).deleteProvider("lmstudio");
 
-        mockMvc.perform(delete("/api/llm-provider/lmstudio"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(200));
+        Result<Void> result = controller.deleteProvider("lmstudio");
 
+        assertEquals(200, result.getCode());
         verify(configService).deleteProvider("lmstudio");
     }
 }

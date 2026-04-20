@@ -7,9 +7,10 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.llmprovider.dto.*;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.representer.Representer;
@@ -127,12 +128,17 @@ public class LlmProviderConfigService {
     public ProviderTestResult testProvider(String id) {
         ProviderConfig config = getProviderConfigOrThrow(id);
         try {
-            OpenAiApi api = OpenAiApi.builder()
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(5000);
+            requestFactory.setReadTimeout(10000);
+
+            RestClient restClient = RestClient.builder()
                 .baseUrl(config.getBaseUrl())
-                .apiKey(config.getApiKey())
+                .defaultHeader("Authorization", "Bearer " + config.getApiKey())
+                .requestFactory(requestFactory)
                 .build();
 
-            api.modelsApi().listModels();
+            restClient.get().uri("/models").retrieve().toEntity(String.class);
             return ProviderTestResult.builder()
                 .success(true)
                 .message("连接成功")

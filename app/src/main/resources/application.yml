@@ -169,9 +169,6 @@ app:
 
   # Voice interview configuration
   voice-interview:
-    # LLM provider selection
-    llm-provider: ${APP_VOICE_INTERVIEW_LLM_PROVIDER:dashscope}  # dashscope | minimax | openai | deepseek
-
     # Phase duration settings (minutes)
     phase:
       intro:

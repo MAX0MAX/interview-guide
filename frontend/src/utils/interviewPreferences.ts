@@ -5,15 +5,15 @@ interface InterviewPreferences {
 }
 
 const DEFAULT_INTERVIEW_PREFERENCES: InterviewPreferences = {
-  defaultLlmProvider: 'dashscope',
+  defaultLlmProvider: '',
 };
 
 function normalizeProvider(value: unknown): string {
   if (typeof value !== 'string') {
-    return DEFAULT_INTERVIEW_PREFERENCES.defaultLlmProvider;
+    return '';
   }
   const trimmed = value.trim();
-  return trimmed || DEFAULT_INTERVIEW_PREFERENCES.defaultLlmProvider;
+  return trimmed || '';
 }
 
 export function loadInterviewPreferences(): InterviewPreferences {

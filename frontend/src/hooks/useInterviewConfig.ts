@@ -15,7 +15,7 @@ export const DIFFICULTY_OPTIONS: { value: Difficulty; label: string; desc: strin
 
 export const CUSTOM_SKILL_ID = 'custom';
 export const DEFAULT_SKILL_ID = 'java-backend';
-export const DEFAULT_LLM_PROVIDER = 'dashscope';
+export const DEFAULT_LLM_PROVIDER = '';
 export const MIN_JD_LENGTH = 50;
 
 export interface InterviewConfigState {

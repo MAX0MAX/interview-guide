@@ -73,19 +73,8 @@ spring:
           subscriptionConnectionMinimumIdleSize: 1
           subscriptionConnectionPoolSize: 50
   
-  # Spring AI - 阿里云DashScope (OpenAI兼容模式)
+  # Spring AI 配置（chat + embedding 统一由 app.ai.providers 驱动，不使用自动配置）
   ai:
-    openai:
-      base-url: https://dashscope.aliyuncs.com/compatible-mode
-      api-key: ${AI_BAILIAN_API_KEY}
-      chat:
-        options:
-          model: ${AI_MODEL:qwen-plus}
-          temperature: 0.2
-      # Embedding模型配置 - 使用text-embedding-v3
-      embedding:
-        options:
-          model: text-embedding-v3
     # 禁用自动重试机制，让异常立即返回
     retry:
       max-attempts: 1  # 不重试，失败立即返回
@@ -109,11 +98,21 @@ app:
       dashscope:
         base-url: https://dashscope.aliyuncs.com/compatible-mode
         api-key: ${AI_BAILIAN_API_KEY}
-        model: qwen-plus
+        model: ${AI_MODEL:qwen-plus}
+        embedding-model: text-embedding-v3
+        enabled: true
       lmstudio:
         base-url: http://localhost:1234
-        api-key: lm-studio
+        api-key: ${PROVIDER_LMSTUDIO_API_KEY:lm-studio}
         model: qwen2.5-7b-instruct
+        enabled: true
+    module-defaults:
+      interview: dashscope
+      resume: dashscope
+      knowledge-base: dashscope
+      voice-interview: dashscope
+      review: dashscope
+      interview-schedule: dashscope
     advisors:
       enabled: ${APP_AI_ADVISORS_ENABLED:true}
       tool-call-enabled: ${APP_AI_ADVISORS_TOOL_CALL_ENABLED:true}
@@ -170,9 +169,6 @@ app:
 
   # Voice interview configuration
   voice-interview:
-    # LLM provider selection
-    llm-provider: ${APP_VOICE_INTERVIEW_LLM_PROVIDER:dashscope}  # dashscope | minimax | openai | deepseek
-
     # Phase duration settings (minutes)
     phase:
       intro:

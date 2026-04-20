@@ -3,6 +3,8 @@ package interview.guide.common.ai;
 import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.AdvisorConfig;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
+import interview.guide.common.exception.BusinessException;
+import interview.guide.common.exception.ErrorCode;
 import io.micrometer.observation.ObservationRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -107,6 +109,34 @@ public class LlmProviderRegistry {
         return clientCache.computeIfAbsent(id + ":voice", key -> createVoiceChatClient(id));
     }
 
+    /**
+     * 清空缓存，重新加载所有 provider。
+     */
+    public void reload() {
+        int size = clientCache.size();
+        clientCache.clear();
+        log.info("[LlmProviderRegistry] Cache cleared ({} entries). Next access will re-create clients.", size);
+    }
+
+    /**
+     * 获取指定模块的默认 provider ID。
+     * 若模块无配置则回退到全局 default-provider。
+     */
+    public String getModuleDefaultProvider(String module) {
+        Map<String, String> defaults = properties.getModuleDefaults();
+        if (defaults != null && defaults.containsKey(module)) {
+            return defaults.get(module);
+        }
+        return properties.getDefaultProvider();
+    }
+
+    /**
+     * 获取指定模块默认 provider 的 ChatClient。
+     */
+    public ChatClient getModuleDefaultChatClient(String module) {
+        return getChatClient(getModuleDefaultProvider(module));
+    }
+
     private ChatClient createChatClient(String providerId) {
         OpenAiChatModel chatModel = buildChatModel(providerId);
 
@@ -155,6 +185,11 @@ public class LlmProviderRegistry {
         if (config == null) {
             log.error("[LlmProviderRegistry] Provider config not found: {}", providerId);
             throw new IllegalArgumentException("Unknown LLM provider: " + providerId);
+        }
+        if (!config.isEnabled()) {
+            log.warn("[LlmProviderRegistry] Provider is disabled: {}", providerId);
+            throw new BusinessException(ErrorCode.AI_SERVICE_UNAVAILABLE,
+                "LLM provider '" + providerId + "' 已被禁用");
         }
 
         log.info("[LlmProviderRegistry] Building ChatModel - Provider: {}, BaseUrl: {}, Model: {}",

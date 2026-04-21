@@ -5,15 +5,23 @@ import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
+import interview.guide.modules.llmprovider.dto.AsrConfigDTO;
+import interview.guide.modules.llmprovider.dto.AsrConfigRequest;
 import interview.guide.modules.llmprovider.dto.CreateProviderRequest;
 import interview.guide.modules.llmprovider.dto.ModuleDefaultsDTO;
 import interview.guide.modules.llmprovider.dto.ProviderDTO;
 import interview.guide.modules.llmprovider.dto.ProviderTestResult;
+import interview.guide.modules.llmprovider.dto.TtsConfigDTO;
+import interview.guide.modules.llmprovider.dto.TtsConfigRequest;
 import interview.guide.modules.llmprovider.dto.UpdateProviderRequest;
+import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
+import interview.guide.modules.voiceinterview.service.QwenAsrService;
+import interview.guide.modules.voiceinterview.service.QwenTtsService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.representer.Representer;
@@ -21,6 +29,7 @@ import org.yaml.snakeyaml.representer.Representer;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,14 +51,23 @@ public class LlmProviderConfigService {
     private final String yamlPath;
     private final String envPath;
     private final Object configLock = new Object();
+    private final VoiceInterviewProperties voiceProperties;
+    private final QwenAsrService asrService;
+    private final QwenTtsService ttsService;
 
     public LlmProviderConfigService(
             LlmProviderProperties properties,
-            LlmProviderRegistry registry) {
+            LlmProviderRegistry registry,
+            VoiceInterviewProperties voiceProperties,
+            QwenAsrService asrService,
+            QwenTtsService ttsService) {
         this.properties = properties;
         this.registry = registry;
         this.yamlPath = properties.getConfigYamlPath();
         this.envPath = properties.getConfigEnvPath();
+        this.voiceProperties = voiceProperties;
+        this.asrService = asrService;
+        this.ttsService = ttsService;
     }
 
     public List<ProviderDTO> listProviders() {
@@ -152,18 +170,80 @@ public class LlmProviderConfigService {
             requestFactory.setReadTimeout(10000);
 
             RestClient restClient = RestClient.builder()
-                .baseUrl(config.getBaseUrl())
                 .defaultHeader("Authorization", "Bearer " + config.getApiKey())
                 .requestFactory(requestFactory)
                 .build();
 
-            restClient.get().uri("/models").retrieve().toEntity(String.class);
+            Map<String, Object> requestBody = new LinkedHashMap<>();
+            requestBody.put("model", config.getModel());
+            requestBody.put("messages", List.of(Map.of(
+                "role", "user",
+                "content", "Reply with OK only."
+            )));
+            requestBody.put("max_tokens", 1);
+            requestBody.put("temperature", 0);
+
+            List<String> candidateUrls = buildConnectivityTestUrls(config.getBaseUrl());
+            String lastFailureMessage = "Unknown error";
+
+            for (String targetUrl : candidateUrls) {
+                try {
+                    restClient.post()
+                        .uri(URI.create(targetUrl))
+                        .body(requestBody)
+                        .retrieve()
+                        .toEntity(String.class);
+                    log.info("Provider connectivity test succeeded: providerId={}, baseUrl={}, targetUrl={}, model={}",
+                        id, config.getBaseUrl(), targetUrl, config.getModel());
+                    return ProviderTestResult.builder()
+                        .success(true)
+                        .message("连接成功")
+                        .model(config.getModel())
+                        .build();
+                } catch (RestClientResponseException e) {
+                    String responseBody = abbreviate(e.getResponseBodyAsString());
+                    lastFailureMessage = String.format(
+                        "HTTP %s on %s, body=%s",
+                        e.getStatusCode().value(),
+                        targetUrl,
+                        responseBody
+                    );
+                    log.warn(
+                        "Provider connectivity test failed with response: providerId={}, baseUrl={}, targetUrl={}, model={}, status={}, body={}",
+                        id,
+                        config.getBaseUrl(),
+                        targetUrl,
+                        config.getModel(),
+                        e.getStatusCode().value(),
+                        responseBody,
+                        e
+                    );
+                } catch (Exception e) {
+                    lastFailureMessage = String.format(
+                        "%s on %s: %s",
+                        e.getClass().getSimpleName(),
+                        targetUrl,
+                        e.getMessage()
+                    );
+                    log.warn(
+                        "Provider connectivity test failed: providerId={}, baseUrl={}, targetUrl={}, model={}, error={}",
+                        id,
+                        config.getBaseUrl(),
+                        targetUrl,
+                        config.getModel(),
+                        e.getMessage(),
+                        e
+                    );
+                }
+            }
             return ProviderTestResult.builder()
-                .success(true)
-                .message("连接成功")
+                .success(false)
+                .message("连接失败: " + lastFailureMessage)
                 .model(config.getModel())
                 .build();
         } catch (Exception e) {
+            log.warn("Provider connectivity test setup failed: providerId={}, baseUrl={}, model={}, error={}",
+                id, config.getBaseUrl(), config.getModel(), e.getMessage(), e);
             return ProviderTestResult.builder()
                 .success(false)
                 .message("连接失败: " + e.getMessage())
@@ -187,6 +267,106 @@ public class LlmProviderConfigService {
     public void reloadProviders() {
         registry.reload();
         log.info("Manual provider reload triggered");
+    }
+
+    public AsrConfigDTO getAsrConfig() {
+        VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
+        return AsrConfigDTO.builder()
+            .url(asr.getUrl())
+            .model(asr.getModel())
+            .maskedApiKey(maskApiKey(asr.getApiKey()))
+            .language(asr.getLanguage())
+            .format(asr.getFormat())
+            .sampleRate(asr.getSampleRate())
+            .enableTurnDetection(asr.isEnableTurnDetection())
+            .turnDetectionType(asr.getTurnDetectionType())
+            .turnDetectionThreshold(asr.getTurnDetectionThreshold())
+            .turnDetectionSilenceDurationMs(asr.getTurnDetectionSilenceDurationMs())
+            .build();
+    }
+
+    public TtsConfigDTO getTtsConfig() {
+        VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
+        return TtsConfigDTO.builder()
+            .model(tts.getModel())
+            .maskedApiKey(maskApiKey(tts.getApiKey()))
+            .voice(tts.getVoice())
+            .format(tts.getFormat())
+            .sampleRate(tts.getSampleRate())
+            .mode(tts.getMode())
+            .languageType(tts.getLanguageType())
+            .speechRate(tts.getSpeechRate())
+            .volume(tts.getVolume())
+            .build();
+    }
+
+    public void updateAsrConfig(AsrConfigRequest request) {
+        synchronized (configLock) {
+            VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
+            if (request.url() != null) asr.setUrl(request.url());
+            if (request.model() != null) asr.setModel(request.model());
+            if (request.language() != null) asr.setLanguage(request.language());
+            if (request.format() != null) asr.setFormat(request.format());
+            if (request.sampleRate() != null) asr.setSampleRate(request.sampleRate());
+            if (request.enableTurnDetection() != null) asr.setEnableTurnDetection(request.enableTurnDetection());
+            if (request.turnDetectionType() != null) asr.setTurnDetectionType(request.turnDetectionType());
+            if (request.turnDetectionThreshold() != null) asr.setTurnDetectionThreshold(request.turnDetectionThreshold());
+            if (request.turnDetectionSilenceDurationMs() != null) asr.setTurnDetectionSilenceDurationMs(request.turnDetectionSilenceDurationMs());
+            if (request.apiKey() != null) {
+                asr.setApiKey(request.apiKey());
+                updateEnvValue("AI_BAILIAN_API_KEY", request.apiKey());
+            }
+
+            writeAsrConfigToYaml(asr);
+            asrService.reload(voiceProperties);
+            log.info("Updated ASR config");
+        }
+    }
+
+    public void updateTtsConfig(TtsConfigRequest request) {
+        synchronized (configLock) {
+            VoiceInterviewProperties.QwenTtsConfig tts = voiceProperties.getQwen().getTts();
+            if (request.model() != null) tts.setModel(request.model());
+            if (request.voice() != null) tts.setVoice(request.voice());
+            if (request.format() != null) tts.setFormat(request.format());
+            if (request.sampleRate() != null) tts.setSampleRate(request.sampleRate());
+            if (request.mode() != null) tts.setMode(request.mode());
+            if (request.languageType() != null) tts.setLanguageType(request.languageType());
+            if (request.speechRate() != null) tts.setSpeechRate(request.speechRate());
+            if (request.volume() != null) tts.setVolume(request.volume());
+            if (request.apiKey() != null) {
+                tts.setApiKey(request.apiKey());
+                updateEnvValue("AI_BAILIAN_API_KEY", request.apiKey());
+            }
+
+            writeTtsConfigToYaml(tts);
+            ttsService.reload(voiceProperties);
+            log.info("Updated TTS config");
+        }
+    }
+
+    public ProviderTestResult testAsrConfig() {
+        VoiceInterviewProperties.AsrConfig asr = voiceProperties.getQwen().getAsr();
+        try {
+            java.net.URI wsUri = java.net.URI.create(asr.getUrl());
+            String host = wsUri.getHost();
+            int port = wsUri.getPort() > 0 ? wsUri.getPort() : (wsUri.getScheme().equals("wss") ? 443 : 80);
+            java.net.InetSocketAddress address = new java.net.InetSocketAddress(host, port);
+            java.net.Socket socket = new java.net.Socket();
+            socket.connect(address, 5000);
+            socket.close();
+            return ProviderTestResult.builder()
+                .success(true)
+                .message("ASR WebSocket 连接成功: " + host)
+                .model(asr.getModel())
+                .build();
+        } catch (Exception e) {
+            return ProviderTestResult.builder()
+                .success(false)
+                .message("ASR 连接失败: " + e.getMessage())
+                .model(asr.getModel())
+                .build();
+        }
     }
 
     // ===== 内部方法 =====
@@ -215,6 +395,40 @@ public class LlmProviderConfigService {
             return "***";
         }
         return apiKey.substring(0, 3) + "***" + apiKey.substring(apiKey.length() - 3);
+    }
+
+    private String abbreviate(String text) {
+        if (text == null || text.isBlank()) {
+            return "[no body]";
+        }
+        String normalized = text.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= 200) {
+            return normalized;
+        }
+        return normalized.substring(0, 200) + "...";
+    }
+
+    private List<String> buildConnectivityTestUrls(String baseUrl) {
+        String normalizedBaseUrl = stripTrailingSlash(baseUrl);
+        LinkedHashSet<String> candidateUrls = new LinkedHashSet<>();
+
+        candidateUrls.add(normalizedBaseUrl + "/chat/completions");
+        if (!normalizedBaseUrl.endsWith("/v1")) {
+            candidateUrls.add(normalizedBaseUrl + "/v1/chat/completions");
+        }
+
+        return List.copyOf(candidateUrls);
+    }
+
+    private String stripTrailingSlash(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     private String toEnvKey(String providerId) {
@@ -423,6 +637,77 @@ public class LlmProviderConfigService {
             Files.writeString(path, content, StandardCharsets.UTF_8);
         } catch (IOException e) {
             log.warn("删除 .env 条目失败: {}", e.getMessage());
+        }
+    }
+
+    private void writeAsrConfigToYaml(VoiceInterviewProperties.AsrConfig asr) {
+        if (yamlPath == null || yamlPath.isBlank()) {
+            log.warn("YAML path not configured, skip writing");
+            return;
+        }
+        try {
+            Yaml yaml = createYaml();
+            Path path = Path.of(yamlPath);
+            Map<String, Object> data;
+            try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                data = yaml.load(reader);
+            }
+
+            Map<String, Object> qwen = getOrCreateMap(
+                getOrCreateMap(getOrCreateMap(data, "app"), "voice-interview"), "qwen");
+            Map<String, Object> asrMap = getOrCreateMap(qwen, "asr");
+            asrMap.put("url", asr.getUrl());
+            asrMap.put("model", asr.getModel());
+            asrMap.put("api-key", "${AI_BAILIAN_API_KEY}");
+            asrMap.put("language", asr.getLanguage());
+            asrMap.put("format", asr.getFormat());
+            asrMap.put("sample-rate", asr.getSampleRate());
+            asrMap.put("enable-turn-detection", asr.isEnableTurnDetection());
+            asrMap.put("turn-detection-type", asr.getTurnDetectionType());
+            asrMap.put("turn-detection-threshold", asr.getTurnDetectionThreshold());
+            asrMap.put("turn-detection-silence-duration-ms", asr.getTurnDetectionSilenceDurationMs());
+
+            try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+                yaml.dump(data, writer);
+            }
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.VOICE_CONFIG_WRITE_FAILED,
+                "写入 ASR 配置失败: " + e.getMessage());
+        }
+    }
+
+    private void writeTtsConfigToYaml(VoiceInterviewProperties.QwenTtsConfig tts) {
+        if (yamlPath == null || yamlPath.isBlank()) {
+            log.warn("YAML path not configured, skip writing");
+            return;
+        }
+        try {
+            Yaml yaml = createYaml();
+            Path path = Path.of(yamlPath);
+            Map<String, Object> data;
+            try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                data = yaml.load(reader);
+            }
+
+            Map<String, Object> qwen = getOrCreateMap(
+                getOrCreateMap(getOrCreateMap(data, "app"), "voice-interview"), "qwen");
+            Map<String, Object> ttsMap = getOrCreateMap(qwen, "tts");
+            ttsMap.put("model", tts.getModel());
+            ttsMap.put("api-key", "${AI_BAILIAN_API_KEY}");
+            ttsMap.put("voice", tts.getVoice());
+            ttsMap.put("format", tts.getFormat());
+            ttsMap.put("sample-rate", tts.getSampleRate());
+            ttsMap.put("mode", tts.getMode());
+            ttsMap.put("language-type", tts.getLanguageType());
+            ttsMap.put("speech-rate", tts.getSpeechRate());
+            ttsMap.put("volume", tts.getVolume());
+
+            try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+                yaml.dump(data, writer);
+            }
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.VOICE_CONFIG_WRITE_FAILED,
+                "写入 TTS 配置失败: " + e.getMessage());
         }
     }
 

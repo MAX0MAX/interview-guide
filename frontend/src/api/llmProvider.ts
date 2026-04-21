@@ -31,6 +31,9 @@ export const llmProviderApi = {
   reload: () =>
     request.post<void>('/api/llm-provider/reload'),
 
+  setDefault: (id: string) =>
+    request.put<void>(`/api/llm-provider/default/${encodeURIComponent(id)}`),
+
   getModuleDefaults: () =>
     request.get<ModuleDefaults>('/api/llm-provider/module-defaults'),
 

@@ -9,5 +9,6 @@ public record ProviderDTO(
     String maskedApiKey,
     String model,
     String embeddingModel,
-    boolean enabled
+    boolean enabled,
+    boolean isDefault
 ) {}

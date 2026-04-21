@@ -5,6 +5,7 @@ export interface ProviderItem {
   model: string;
   embeddingModel: string | null;
   enabled: boolean;
+  isDefault: boolean;
 }
 
 export interface CreateProviderRequest {

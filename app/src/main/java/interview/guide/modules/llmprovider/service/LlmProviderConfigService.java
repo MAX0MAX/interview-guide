@@ -131,20 +131,18 @@ public class LlmProviderConfigService {
         Map<String, ProviderConfig> providers = properties.getProviders();
         if (providers == null) return List.of();
 
+        String defaultProvider = properties.getDefaultProvider();
         return providers.entrySet().stream()
-            .map(e -> ProviderDTO.builder()
-                .id(e.getKey())
-                .baseUrl(e.getValue().getBaseUrl())
-                .maskedApiKey(maskApiKey(e.getValue().getApiKey()))
-                .model(e.getValue().getModel())
-                .embeddingModel(e.getValue().getEmbeddingModel())
-                .enabled(e.getValue().isEnabled())
-                .build())
+            .map(e -> toProviderDTO(e.getKey(), e.getValue(), defaultProvider))
             .toList();
     }
 
     public ProviderDTO getProvider(String id) {
         ProviderConfig config = getProviderConfigOrThrow(id);
+        return toProviderDTO(id, config, properties.getDefaultProvider());
+    }
+
+    private ProviderDTO toProviderDTO(String id, ProviderConfig config, String defaultProviderId) {
         return ProviderDTO.builder()
             .id(id)
             .baseUrl(config.getBaseUrl())
@@ -152,6 +150,7 @@ public class LlmProviderConfigService {
             .model(config.getModel())
             .embeddingModel(config.getEmbeddingModel())
             .enabled(config.isEnabled())
+            .isDefault(id.equals(defaultProviderId))
             .build();
     }
 
@@ -311,6 +310,33 @@ public class LlmProviderConfigService {
 
     public ModuleDefaultsDTO getModuleDefaults() {
         return new ModuleDefaultsDTO(properties.getModuleDefaults());
+    }
+
+    /**
+     * 将指定 provider 设为全局默认（写入 app.ai.default-provider）。
+     * 影响 LlmProviderRegistry.getDefaultChatClient() 以及没有在 module-defaults 中覆盖的模块。
+     */
+    public void setDefaultProvider(String providerId) {
+        if (providerId == null || providerId.isBlank()) {
+            throw new BusinessException(ErrorCode.PROVIDER_NOT_FOUND, "providerId 不能为空");
+        }
+        synchronized (configLock) {
+            ProviderConfig config = getProviderConfigOrThrow(providerId);
+            if (!config.isEnabled()) {
+                throw new BusinessException(ErrorCode.PROVIDER_DISABLED,
+                    "Provider '" + providerId + "' 已被禁用，无法设为默认");
+            }
+            String previous = properties.getDefaultProvider();
+            properties.setDefaultProvider(providerId);
+            try {
+                writeDefaultProviderToYaml(providerId);
+            } catch (RuntimeException e) {
+                properties.setDefaultProvider(previous);
+                throw e;
+            }
+            registry.reload();
+            log.info("Updated default provider: {} -> {}", previous, providerId);
+        }
     }
 
     public void updateModuleDefaults(ModuleDefaultsDTO request) {
@@ -618,6 +644,22 @@ public class LlmProviderConfigService {
         } catch (IOException e) {
             throw new BusinessException(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED,
                 "删除 YAML 配置失败: " + e.getMessage());
+        }
+    }
+
+    private void writeDefaultProviderToYaml(String providerId) {
+        try {
+            Yaml yaml = createYaml();
+            Path path = Path.of(yamlPath);
+            Map<String, Object> data = loadYamlOrEmpty(yaml, path);
+            Map<String, Object> ai = getOrCreateMap(getOrCreateMap(data, "app"), "ai");
+            ai.put("default-provider", providerId);
+            try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+                yaml.dump(data, writer);
+            }
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED,
+                "写入 default-provider 失败: " + e.getMessage());
         }
     }
 

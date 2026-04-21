@@ -81,6 +81,17 @@ public class LlmProviderController {
         return Result.success();
     }
 
+    /**
+     * 修改全局默认 provider（写入 app.ai.default-provider）。
+     * 影响未在 module-defaults 中覆盖的模块，以及直接 getDefaultChatClient() 的调用方。
+     */
+    @PutMapping("/default/{id}")
+    @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 5)
+    public Result<Void> setDefaultProvider(@PathVariable String id) {
+        configService.setDefaultProvider(id);
+        return Result.success();
+    }
+
     @GetMapping("/module-defaults")
     @RateLimit(dimension = RateLimit.Dimension.GLOBAL, count = 30)
     public Result<ModuleDefaultsDTO> getModuleDefaults() {

@@ -219,16 +219,12 @@ export default function SettingsPage() {
   };
 
   const handleSetDefault = async (providerId: string) => {
-    if (!window.confirm(`确定要将 "${providerId}" 设为所有模块的默认 Provider 吗？`)) {
+    if (!window.confirm(`确定要将 "${providerId}" 设为全局默认 Provider 吗？`)) {
       return;
     }
     try {
-      const updatedDefaults: Record<string, string> = {};
-      for (const key of Object.keys(MODULE_LABELS)) {
-        updatedDefaults[key] = providerId;
-      }
-      await llmProviderApi.updateModuleDefaults({ moduleDefaults: updatedDefaults });
-      showToast(`已将 "${providerId}" 设为所有模块默认 Provider`);
+      await llmProviderApi.setDefault(providerId);
+      showToast(`已将 "${providerId}" 设为全局默认 Provider`);
       await loadData();
     } catch (err) {
       console.error('Failed to set default:', err);
@@ -441,17 +437,24 @@ export default function SettingsPage() {
                             <h3 className="font-semibold text-slate-800 dark:text-white text-sm">
                               {provider.id}
                             </h3>
-                            <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                              provider.enabled
-                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
-                            }`}>
-                              {provider.enabled ? (
-                                <><CheckCircle className="w-3 h-3" /> 已启用</>
-                              ) : (
-                                <><XCircle className="w-3 h-3" /> 已禁用</>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                                provider.enabled
+                                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                              }`}>
+                                {provider.enabled ? (
+                                  <><CheckCircle className="w-3 h-3" /> 已启用</>
+                                ) : (
+                                  <><XCircle className="w-3 h-3" /> 已禁用</>
+                                )}
+                              </span>
+                              {provider.isDefault && (
+                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
+                                  默认
+                                </span>
                               )}
-                            </span>
+                            </div>
                           </div>
                         </div>
                       </div>

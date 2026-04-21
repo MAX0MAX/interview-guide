@@ -35,7 +35,9 @@ class LlmProviderConfigServiceTest {
     void setUp(@TempDir Path tempDir) throws IOException {
         Path tempYaml = tempDir.resolve("application.yml");
         Path tempEnv = tempDir.resolve(".env");
-        service = new LlmProviderConfigService(properties, registry, tempYaml.toString(), tempEnv.toString());
+        when(properties.getConfigYamlPath()).thenReturn(tempYaml.toString());
+        when(properties.getConfigEnvPath()).thenReturn(tempEnv.toString());
+        service = new LlmProviderConfigService(properties, registry);
     }
 
     @Test

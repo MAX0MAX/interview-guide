@@ -16,6 +16,8 @@ public class LlmProviderProperties {
     private Map<String, ProviderConfig> providers;
     private Map<String, String> moduleDefaults = new HashMap<>();
     private AdvisorConfig advisors = new AdvisorConfig();
+    private String configYamlPath;
+    private String configEnvPath;
 
     @Data
     public static class ProviderConfig {

@@ -42,7 +42,7 @@ export default function SettingsPage() {
 
   // Test state
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<ProviderTestResult | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, ProviderTestResult>>({});
 
   // Delete confirmation
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -102,7 +102,6 @@ export default function SettingsPage() {
   const closeModal = () => {
     setShowModal(false);
     setEditingProvider(null);
-    setTestResult(null);
   };
 
   // --- CRUD handlers ---
@@ -180,23 +179,33 @@ export default function SettingsPage() {
 
   const handleTest = async (id: string) => {
     setTestingId(id);
-    setTestResult(null);
+    setTestResults(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     try {
       const result = await llmProviderApi.test(id);
-      setTestResult(result);
+      setTestResults(prev => ({ ...prev, [id]: result }));
     } catch (err) {
       console.error('Test failed:', err);
-      setTestResult({
-        success: false,
-        message: err instanceof Error ? err.message : '连接测试失败',
-        model: '',
-      });
+      setTestResults(prev => ({
+        ...prev,
+        [id]: {
+          success: false,
+          message: err instanceof Error ? err.message : '连接测试失败',
+          model: '',
+        },
+      }));
     } finally {
       setTestingId(null);
     }
   };
 
   const handleSetDefault = async (providerId: string) => {
+    if (!window.confirm(`确定要将 "${providerId}" 设为所有模块的默认 Provider 吗？`)) {
+      return;
+    }
     try {
       const updatedDefaults: Record<string, string> = {};
       for (const key of Object.keys(MODULE_LABELS)) {
@@ -377,22 +386,22 @@ export default function SettingsPage() {
                       </div>
 
                       {/* Test result */}
-                      {testResult && testingId === null && (
+                      {testResults[provider.id] && (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
                           className={`mb-3 px-3 py-2 rounded-lg text-xs font-medium ${
-                            testResult.success
+                            testResults[provider.id].success
                               ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300'
                               : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
                           }`}
                         >
                           <div className="flex items-center gap-1.5">
-                            {testResult.success
+                            {testResults[provider.id].success
                               ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
                               : <XCircle className="w-3.5 h-3.5 flex-shrink-0" />
                             }
-                            <span>{testResult.message}</span>
+                            <span>{testResults[provider.id].message}</span>
                           </div>
                         </motion.div>
                       )}

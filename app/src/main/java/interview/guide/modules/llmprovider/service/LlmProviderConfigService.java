@@ -169,11 +169,12 @@ public class LlmProviderConfigService {
             config.setEmbeddingModel(request.embeddingModel());
             config.setEnabled(true);
 
-            providers.put(request.id(), config);
-
+            // 先持久化，后提交内存：写盘失败时不污染运行时状态。
             String envKey = toEnvKey(request.id());
             writeProviderToYaml(request.id(), config, envKey);
             appendToEnv(envKey, request.apiKey());
+
+            providers.put(request.id(), config);
             registry.invalidate(request.id());
             log.info("Created provider: id={}, baseUrl={}, model={}", request.id(), request.baseUrl(), request.model());
         }
@@ -181,20 +182,23 @@ public class LlmProviderConfigService {
 
     public void updateProvider(String id, UpdateProviderRequest request) {
         synchronized (configLock) {
-            ProviderConfig config = getProviderConfigOrThrow(id);
+            ProviderConfig existing = getProviderConfigOrThrow(id);
+            ProviderConfig updated = copyConfig(existing);
 
-            if (request.baseUrl() != null) config.setBaseUrl(request.baseUrl());
-            if (request.model() != null) config.setModel(request.model());
-            if (request.embeddingModel() != null) config.setEmbeddingModel(request.embeddingModel());
-            if (request.enabled() != null) config.setEnabled(request.enabled());
+            if (request.baseUrl() != null) updated.setBaseUrl(request.baseUrl());
+            if (request.model() != null) updated.setModel(request.model());
+            if (request.embeddingModel() != null) updated.setEmbeddingModel(request.embeddingModel());
+            if (request.enabled() != null) updated.setEnabled(request.enabled());
+            if (request.apiKey() != null) updated.setApiKey(request.apiKey());
+
+            String envKey = toEnvKey(id);
+            writeProviderToYaml(id, updated, envKey);
             if (request.apiKey() != null) {
-                config.setApiKey(request.apiKey());
-                String envKey = toEnvKey(id);
                 updateEnvValue(envKey, request.apiKey());
             }
 
-            String envKey = toEnvKey(id);
-            writeProviderToYaml(id, config, envKey);
+            // 持久化成功后一次性替换内存副本，避免写盘异常时留下半更新状态。
+            getProvidersOrThrow().put(id, updated);
             registry.invalidate(id);
             log.info("Updated provider: id={}", id);
         }
@@ -206,16 +210,38 @@ public class LlmProviderConfigService {
                 throw new BusinessException(ErrorCode.PROVIDER_DEFAULT_CANNOT_DELETE,
                     "默认 Provider '" + id + "' 不可删除，请先切换默认 Provider");
             }
-            getProviderConfigOrThrow(id);
-            getProvidersOrThrow().remove(id);
-            removeProviderFromModuleDefaults(id);
-
+            ProviderConfig original = getProviderConfigOrThrow(id);
             String envKey = toEnvKey(id);
+
+            // 先写盘，成功后才改内存；写盘失败时尝试复原。
             removeProviderFromYaml(id);
+            try {
+                removeProviderFromModuleDefaults(id);
+            } catch (RuntimeException e) {
+                // 复原 yaml（尽力而为），避免用户看到 "删除失败" 但文件里已经少了条目。
+                try {
+                    writeProviderToYaml(id, original, envKey);
+                } catch (RuntimeException restoreErr) {
+                    log.error("Failed to restore provider YAML after deleteProvider failure: id={}", id, restoreErr);
+                }
+                throw e;
+            }
+
+            getProvidersOrThrow().remove(id);
             removeFromEnv(envKey);
             registry.invalidate(id);
             log.info("Deleted provider: id={}", id);
         }
+    }
+
+    private ProviderConfig copyConfig(ProviderConfig src) {
+        ProviderConfig copy = new ProviderConfig();
+        copy.setBaseUrl(src.getBaseUrl());
+        copy.setApiKey(src.getApiKey());
+        copy.setModel(src.getModel());
+        copy.setEmbeddingModel(src.getEmbeddingModel());
+        copy.setEnabled(src.isEnabled());
+        return copy;
     }
 
     public ProviderTestResult testProvider(String id) {

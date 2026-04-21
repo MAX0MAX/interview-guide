@@ -1,10 +1,13 @@
 package interview.guide.modules.voiceinterview.service;
 
+import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.modules.voiceinterview.dto.SessionMetaDTO;
 import interview.guide.modules.voiceinterview.dto.SessionResponseDTO;
+import interview.guide.modules.voiceinterview.listener.VoiceEvaluateStreamProducer;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionStatus;
+import interview.guide.modules.voiceinterview.repository.VoiceInterviewEvaluationRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewMessageRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,10 +37,19 @@ class VoiceInterviewServicePauseTest {
     private VoiceInterviewMessageRepository messageRepository;
 
     @Mock
+    private VoiceInterviewEvaluationRepository evaluationRepository;
+
+    @Mock
     private RedissonClient redissonClient;
 
     @Mock
     private RBucket<Object> bucket;
+
+    @Mock
+    private VoiceEvaluateStreamProducer voiceEvaluateStreamProducer;
+
+    @Mock
+    private LlmProviderRegistry llmProviderRegistry;
 
     private VoiceInterviewService service;
 
@@ -47,8 +59,11 @@ class VoiceInterviewServicePauseTest {
         service = new VoiceInterviewService(
             sessionRepository,
             messageRepository,
+            evaluationRepository,
             redissonClient,
-            null  // properties
+            null,  // properties
+            voiceEvaluateStreamProducer,
+            llmProviderRegistry
         );
     }
 

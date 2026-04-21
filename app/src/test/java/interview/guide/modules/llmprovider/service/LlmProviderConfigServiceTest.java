@@ -6,6 +6,9 @@ import interview.guide.common.exception.BusinessException;
 import interview.guide.common.exception.ErrorCode;
 import interview.guide.modules.llmprovider.dto.CreateProviderRequest;
 import interview.guide.modules.llmprovider.dto.ModuleDefaultsDTO;
+import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
+import interview.guide.modules.voiceinterview.service.QwenAsrService;
+import interview.guide.modules.voiceinterview.service.QwenTtsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,8 @@ class LlmProviderConfigServiceTest {
 
     @Mock private LlmProviderProperties properties;
     @Mock private LlmProviderRegistry registry;
+    @Mock private QwenAsrService asrService;
+    @Mock private QwenTtsService ttsService;
 
     private LlmProviderConfigService service;
 
@@ -40,7 +45,9 @@ class LlmProviderConfigServiceTest {
         Path tempEnv = tempDir.resolve(".env");
         when(properties.getConfigYamlPath()).thenReturn(tempYaml.toString());
         when(properties.getConfigEnvPath()).thenReturn(tempEnv.toString());
-        service = new LlmProviderConfigService(properties, registry);
+        VoiceInterviewProperties voiceProperties = new VoiceInterviewProperties();
+        service = new LlmProviderConfigService(
+            properties, registry, voiceProperties, asrService, ttsService);
     }
 
     @Test

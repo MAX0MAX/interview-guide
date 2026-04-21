@@ -1,9 +1,9 @@
 package interview.guide.modules.voiceinterview.service;
 
+import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -14,19 +14,19 @@ class QwenTtsServiceTest {
 
     @BeforeEach
     void setUp() {
-        ttsService = new QwenTtsService();
+        VoiceInterviewProperties properties = new VoiceInterviewProperties();
+        VoiceInterviewProperties.QwenTtsConfig tts = properties.getQwen().getTts();
+        tts.setModel("qwen3-tts-flash-realtime");
+        tts.setApiKey("test-api-key");
+        tts.setVoice("Cherry");
+        tts.setFormat("pcm");
+        tts.setSampleRate(24000);
+        tts.setMode("server_commit");
+        tts.setLanguageType("Chinese");
+        tts.setSpeechRate(1.0f);
+        tts.setVolume(60);
 
-        // Set field values using reflection
-        ReflectionTestUtils.setField(ttsService, "url", "wss://dashscope.aliyuncs.com/api-ws/v1/realtime");
-        ReflectionTestUtils.setField(ttsService, "model", "qwen3-tts-flash-realtime");
-        ReflectionTestUtils.setField(ttsService, "apiKey", "test-api-key");
-        ReflectionTestUtils.setField(ttsService, "voice", "Cherry");
-        ReflectionTestUtils.setField(ttsService, "format", "pcm");
-        ReflectionTestUtils.setField(ttsService, "sampleRate", 16000);
-        ReflectionTestUtils.setField(ttsService, "mode", "server_commit");
-        ReflectionTestUtils.setField(ttsService, "languageType", "Chinese");
-        ReflectionTestUtils.setField(ttsService, "speechRate", 1.0f);
-        ReflectionTestUtils.setField(ttsService, "volume", 60);
+        ttsService = new QwenTtsService(properties);
     }
 
     @Test
@@ -73,7 +73,26 @@ class QwenTtsServiceTest {
     void testDestroy() {
         ttsService.init();
 
-        // Destroy should cleanup resources without error
         assertDoesNotThrow(() -> ttsService.destroy());
+    }
+
+    @Test
+    @DisplayName("reload() updates config from new properties")
+    void testReloadUpdatesConfig() {
+        ttsService.init();
+
+        VoiceInterviewProperties newProps = new VoiceInterviewProperties();
+        VoiceInterviewProperties.QwenTtsConfig newTts = newProps.getQwen().getTts();
+        newTts.setModel("qwen3-tts-flash-realtime");
+        newTts.setApiKey("updated-key");
+        newTts.setVoice("Serena");
+        newTts.setFormat("pcm");
+        newTts.setSampleRate(24000);
+        newTts.setMode("commit");
+        newTts.setLanguageType("Chinese");
+        newTts.setSpeechRate(1.0f);
+        newTts.setVolume(70);
+
+        assertDoesNotThrow(() -> ttsService.reload(newProps));
     }
 }

@@ -56,7 +56,7 @@ class VoiceInterviewIntegrationTest {
         void testCompleteInterviewFlow() {
             // Step 1: Create session
             CreateSessionRequest createRequest = CreateSessionRequest.builder()
-                .roleType("ali-p8")
+                .skillId("ali-p8")
                 .introEnabled(true)
                 .techEnabled(true)
                 .projectEnabled(true)
@@ -103,7 +103,7 @@ class VoiceInterviewIntegrationTest {
         void testPhaseTransition() {
             // Create session with INTRO and TECH phases
             CreateSessionRequest request = CreateSessionRequest.builder()
-                .roleType("byteance-algo")
+                .skillId("byteance-algo")
                 .introEnabled(true)
                 .techEnabled(true)
                 .projectEnabled(false)
@@ -135,7 +135,7 @@ class VoiceInterviewIntegrationTest {
         @DisplayName("会话持久化 - 数据库存储和检索")
         void testSessionPersistence() {
             CreateSessionRequest request = CreateSessionRequest.builder()
-                .roleType("tencent-backend")
+                .skillId("tencent-backend")
                 .introEnabled(true)
                 .plannedDuration(25)
                 .build();
@@ -159,7 +159,7 @@ class VoiceInterviewIntegrationTest {
         @DisplayName("多阶段会话 - 验证所有阶段都能正确初始化")
         void testMultiPhaseSession() {
             CreateSessionRequest request = CreateSessionRequest.builder()
-                .roleType("ali-p8")
+                .skillId("ali-p8")
                 .introEnabled(true)
                 .techEnabled(true)
                 .projectEnabled(true)
@@ -217,7 +217,7 @@ class VoiceInterviewIntegrationTest {
         void testEmptyConfiguration() {
             // Create session with minimal configuration
             CreateSessionRequest request = CreateSessionRequest.builder()
-                .roleType("ali-p8")
+                .skillId("ali-p8")
                 .build();
 
             SessionResponseDTO sessionResponse = voiceInterviewService.createSession(request);
@@ -233,7 +233,7 @@ class VoiceInterviewIntegrationTest {
 
             for (String roleType : roleTypes) {
                 CreateSessionRequest request = CreateSessionRequest.builder()
-                    .roleType(roleType)
+                    .skillId(roleType)
                     .plannedDuration(30)
                     .build();
 

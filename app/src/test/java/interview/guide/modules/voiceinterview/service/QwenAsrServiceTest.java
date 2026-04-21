@@ -2,14 +2,13 @@ package interview.guide.modules.voiceinterview.service;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,19 +19,20 @@ class QwenAsrServiceTest {
 
     @BeforeEach
     void setUp() {
-        asrService = new QwenAsrService();
+        VoiceInterviewProperties properties = new VoiceInterviewProperties();
+        VoiceInterviewProperties.AsrConfig asr = properties.getQwen().getAsr();
+        asr.setUrl("wss://dashscope.aliyuncs.com/api-ws/v1/realtime");
+        asr.setModel("qwen3-asr-flash-realtime");
+        asr.setApiKey("test-api-key");
+        asr.setLanguage("zh");
+        asr.setFormat("pcm");
+        asr.setSampleRate(16000);
+        asr.setEnableTurnDetection(true);
+        asr.setTurnDetectionType("server_vad");
+        asr.setTurnDetectionThreshold(0.0f);
+        asr.setTurnDetectionSilenceDurationMs(400);
 
-        // Set field values using reflection
-        ReflectionTestUtils.setField(asrService, "url", "wss://dashscope.aliyuncs.com/api-ws/v1/realtime");
-        ReflectionTestUtils.setField(asrService, "model", "qwen3-asr-flash-realtime");
-        ReflectionTestUtils.setField(asrService, "apiKey", "test-api-key");
-        ReflectionTestUtils.setField(asrService, "language", "zh");
-        ReflectionTestUtils.setField(asrService, "format", "pcm");
-        ReflectionTestUtils.setField(asrService, "sampleRate", 16000);
-        ReflectionTestUtils.setField(asrService, "enableTurnDetection", true);
-        ReflectionTestUtils.setField(asrService, "turnDetectionType", "server_vad");
-        ReflectionTestUtils.setField(asrService, "turnDetectionThreshold", 0.0f);
-        ReflectionTestUtils.setField(asrService, "turnDetectionSilenceDurationMs", 400);
+        asrService = new QwenAsrService(properties);
     }
 
     @Test
@@ -56,10 +56,8 @@ class QwenAsrServiceTest {
             error -> errorRef.set(error)
         );
 
-        // Verify session was created
         assertTrue(asrService.hasActiveSession(sessionId));
 
-        // Cleanup
         asrService.stopTranscription(sessionId);
     }
 
@@ -140,14 +138,33 @@ class QwenAsrServiceTest {
     void testDestroy() throws Exception {
         asrService.init();
 
-        // Create multiple sessions
         asrService.startTranscription("session-1", text -> {}, error -> {});
         asrService.startTranscription("session-2", text -> {}, error -> {});
 
-        // Destroy should cleanup all sessions
         assertDoesNotThrow(() -> asrService.destroy());
 
         assertFalse(asrService.hasActiveSession("session-1"));
         assertFalse(asrService.hasActiveSession("session-2"));
+    }
+
+    @Test
+    @DisplayName("reload() updates config from new properties")
+    void testReloadUpdatesConfig() {
+        asrService.init();
+
+        VoiceInterviewProperties newProps = new VoiceInterviewProperties();
+        VoiceInterviewProperties.AsrConfig newAsr = newProps.getQwen().getAsr();
+        newAsr.setUrl("wss://dashscope.aliyuncs.com/api-ws/v1/realtime");
+        newAsr.setModel("qwen3-asr-flash-realtime");
+        newAsr.setApiKey("updated-key");
+        newAsr.setLanguage("en");
+        newAsr.setFormat("pcm");
+        newAsr.setSampleRate(16000);
+        newAsr.setEnableTurnDetection(true);
+        newAsr.setTurnDetectionType("server_vad");
+        newAsr.setTurnDetectionThreshold(0.5f);
+        newAsr.setTurnDetectionSilenceDurationMs(800);
+
+        assertDoesNotThrow(() -> asrService.reload(newProps));
     }
 }

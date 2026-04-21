@@ -1,12 +1,15 @@
 package interview.guide.modules.voiceinterview.service;
 
+import interview.guide.common.ai.LlmProviderRegistry;
 import interview.guide.common.exception.BusinessException;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.dto.CreateSessionRequest;
 import interview.guide.modules.voiceinterview.dto.SessionResponseDTO;
+import interview.guide.modules.voiceinterview.listener.VoiceEvaluateStreamProducer;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewMessageEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionEntity;
 import interview.guide.modules.voiceinterview.model.VoiceInterviewSessionStatus;
+import interview.guide.modules.voiceinterview.repository.VoiceInterviewEvaluationRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewMessageRepository;
 import interview.guide.modules.voiceinterview.repository.VoiceInterviewSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -57,6 +60,9 @@ class VoiceInterviewServiceTest {
     private VoiceInterviewMessageRepository messageRepository;
 
     @Mock
+    private VoiceInterviewEvaluationRepository evaluationRepository;
+
+    @Mock
     private RedissonClient redissonClient;
 
     @Mock
@@ -64,6 +70,12 @@ class VoiceInterviewServiceTest {
 
     @Mock
     private RBucket<VoiceInterviewSessionEntity> bucket;
+
+    @Mock
+    private VoiceEvaluateStreamProducer voiceEvaluateStreamProducer;
+
+    @Mock
+    private LlmProviderRegistry llmProviderRegistry;
 
     @InjectMocks
     private VoiceInterviewService voiceInterviewService;
@@ -87,6 +99,9 @@ class VoiceInterviewServiceTest {
 
         // Setup properties mock to return default phase config
         lenient().when(properties.getPhase()).thenReturn(phaseConfig);
+
+        // Default provider fallback when request.llmProvider is null (used by createSession)
+        lenient().when(llmProviderRegistry.getModuleDefaultProvider(anyString())).thenReturn("dashscope");
     }
 
     // ==================== 会话创建测试 ====================
@@ -129,7 +144,7 @@ class VoiceInterviewServiceTest {
             assertNotNull(response.getWebSocketUrl());
 
             verify(sessionRepository, times(1)).save(any(VoiceInterviewSessionEntity.class));
-            verify(bucket, times(1)).set(any(), eq(1L), any());
+            verify(bucket, times(1)).set(any(), any(Duration.class));
         }
 
         @Test
@@ -234,6 +249,7 @@ class VoiceInterviewServiceTest {
 
             verify(sessionRepository, times(1)).save(session);
             verify(bucket, times(1)).delete();
+            verify(voiceEvaluateStreamProducer, times(1)).sendEvaluateTask(anyString());
         }
 
         @Test
@@ -280,14 +296,9 @@ class VoiceInterviewServiceTest {
                     .plannedDuration(30)
                     .build();
 
-            List<VoiceInterviewMessageEntity> history = Arrays.asList(
-                    createMessage(sessionId, 1, "用户：你好"),
-                    createMessage(sessionId, 2, "AI：你好，请自我介绍")
-            );
-
             when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(pausedSession));
             when(sessionRepository.save(any(VoiceInterviewSessionEntity.class))).thenReturn(pausedSession);
-            when(messageRepository.findBySessionIdOrderBySequenceNumAsc(sessionId)).thenReturn(history);
+            when(messageRepository.countBySessionId(sessionId)).thenReturn(2L);
 
             // When
             SessionResponseDTO response = voiceInterviewService.resumeSession(sessionId.toString());
@@ -298,8 +309,8 @@ class VoiceInterviewServiceTest {
             assertNotNull(response.getStartTime());
             assertEquals(30, response.getPlannedDuration());
 
-            // Verify conversation history was loaded
-            verify(messageRepository, times(1)).findBySessionIdOrderBySequenceNumAsc(sessionId);
+            // Verify conversation count was queried for logging
+            verify(messageRepository, times(1)).countBySessionId(sessionId);
             verify(sessionRepository, times(1)).save(argThat(session ->
                     session.getStatus() == VoiceInterviewSessionStatus.IN_PROGRESS &&
                     session.getResumedAt() != null
@@ -372,7 +383,7 @@ class VoiceInterviewServiceTest {
             // Then
             assertEquals(VoiceInterviewSessionEntity.InterviewPhase.TECH, session.getCurrentPhase());
             verify(sessionRepository, times(1)).save(session);
-            verify(bucket, times(1)).set(any(), eq(1L), any());
+            verify(bucket, times(1)).set(any(), any(Duration.class));
         }
 
         @Test
@@ -481,11 +492,7 @@ class VoiceInterviewServiceTest {
                     .build();
 
             when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
-            when(messageRepository.findBySessionIdOrderBySequenceNumAsc(sessionId))
-                    .thenReturn(Arrays.asList(
-                            VoiceInterviewMessageEntity.builder().sequenceNum(1).build(),
-                            VoiceInterviewMessageEntity.builder().sequenceNum(2).build()
-                    ));
+            when(messageRepository.countBySessionId(sessionId)).thenReturn(2L);
 
             // When
             voiceInterviewService.saveMessage(sessionId.toString(), userText, aiText);

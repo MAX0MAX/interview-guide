@@ -24,7 +24,6 @@ public class LlmProviderProperties {
         private String baseUrl;
         private String apiKey;
         private String model;
-        private boolean enabled = true;
         private String embeddingModel;
     }
 

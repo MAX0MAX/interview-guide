@@ -3,8 +3,6 @@ package interview.guide.common.ai;
 import interview.guide.common.config.LlmProviderProperties;
 import interview.guide.common.config.LlmProviderProperties.AdvisorConfig;
 import interview.guide.common.config.LlmProviderProperties.ProviderConfig;
-import interview.guide.common.exception.BusinessException;
-import interview.guide.common.exception.ErrorCode;
 import io.micrometer.observation.ObservationRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -67,9 +65,8 @@ public class LlmProviderRegistry {
      * @throws IllegalArgumentException if the providerId is unknown
      */
     public ChatClient getChatClient(String providerId) {
-        log.info("[LlmProviderRegistry] Requesting client for provider: {}", providerId);
         return clientCache.computeIfAbsent(providerId, id -> {
-            log.info("[LlmProviderRegistry] Cache miss. Creating new client for: {}", id);
+            log.info("[LlmProviderRegistry] Creating new client for provider: {}", id);
             return createChatClient(id);
         });
     }
@@ -80,16 +77,20 @@ public class LlmProviderRegistry {
      * @return The default ChatClient instance
      */
     public ChatClient getDefaultChatClient() {
-        return getChatClient(properties.getDefaultProvider());
+        String provider = properties.getDefaultProvider();
+        logModel(provider, "global-default");
+        return getChatClient(provider);
     }
 
     /**
      * Get a ChatClient for the specified provider, falling back to the default if null or blank.
      */
     public ChatClient getChatClientOrDefault(String providerId) {
-        return (providerId != null && !providerId.isBlank())
-            ? getChatClient(providerId)
-            : getDefaultChatClient();
+        if (providerId != null && !providerId.isBlank()) {
+            logModel(providerId, "explicit");
+            return getChatClient(providerId);
+        }
+        return getDefaultChatClient();
     }
 
     /**
@@ -134,7 +135,9 @@ public class LlmProviderRegistry {
      * 获取指定模块默认 provider 的 ChatClient。
      */
     public ChatClient getModuleDefaultChatClient(String module) {
-        return getChatClient(getModuleDefaultProvider(module));
+        String provider = getModuleDefaultProvider(module);
+        logModel(provider, module);
+        return getChatClient(provider);
     }
 
     private ChatClient createChatClient(String providerId) {
@@ -186,12 +189,6 @@ public class LlmProviderRegistry {
             log.error("[LlmProviderRegistry] Provider config not found: {}", providerId);
             throw new IllegalArgumentException("Unknown LLM provider: " + providerId);
         }
-        if (!config.isEnabled()) {
-            log.warn("[LlmProviderRegistry] Provider is disabled: {}", providerId);
-            throw new BusinessException(ErrorCode.AI_SERVICE_UNAVAILABLE,
-                "LLM provider '" + providerId + "' 已被禁用");
-        }
-
         log.info("[LlmProviderRegistry] Building ChatModel - Provider: {}, BaseUrl: {}, Model: {}",
                  providerId, config.getBaseUrl(), config.getModel());
 
@@ -202,11 +199,19 @@ public class LlmProviderRegistry {
         RestClient.Builder restClientBuilder = RestClient.builder()
                 .requestFactory(requestFactory);
 
-        OpenAiApi openAiApi = OpenAiApi.builder()
+        // Spring AI OpenAiApi 默认 completionsPath=/v1/chat/completions，embeddingsPath=/v1/embeddings，
+        // 假设 base-url 不带版本段（如 https://api.openai.com）。但国内大多数兼容端点的 base-url
+        // 自身就已经包含 /v1 或自定义版本段（DashScope /compatible-mode/v1、Kimi /v1、GLM /api/paas/v4、
+        // Volcengine /api/v3、DeepSeek /v1、SiliconFlow /v1 ...）。若原样走默认路径会拼出
+        // `.../v1/v1/chat/completions` 之类的 404 URL。这里按 base-url 末尾是否已含 /vN 做自适应。
+        OpenAiApi.Builder apiBuilder = OpenAiApi.builder()
                 .baseUrl(config.getBaseUrl())
                 .apiKey(config.getApiKey())
-                .restClientBuilder(restClientBuilder)
-                .build();
+                .restClientBuilder(restClientBuilder);
+        if (ApiPathResolver.baseUrlContainsVersion(config.getBaseUrl())) {
+            apiBuilder.completionsPath("/chat/completions").embeddingsPath("/embeddings");
+        }
+        OpenAiApi openAiApi = apiBuilder.build();
 
         OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .model(config.getModel())
@@ -284,5 +289,11 @@ public class LlmProviderRegistry {
     private String resolveProviderId(String providerId) {
         return (providerId != null && !providerId.isBlank())
             ? providerId : properties.getDefaultProvider();
+    }
+
+    private void logModel(String providerId, String source) {
+        ProviderConfig config = properties.getProviders().get(providerId);
+        String model = config != null ? config.getModel() : "unknown";
+        log.info("[LLM] source={}, provider={}, model={}", source, providerId, model);
     }
 }

@@ -331,7 +331,7 @@ cp .env.example .env
 # 2. 编辑 .env 文件，填入 AI 配置
 # vim .env
 # 必填：AI_BAILIAN_API_KEY=your_key_here
-# 可选：AI_MODEL=qwen-plus        # 默认值为 qwen-plus
+# 可选：AI_MODEL=qwen3.5-flash   # 默认值为 qwen3.5-flash
 #        # 也可以改为 qwen-max、qwen-long 等其他可用模型
 #
 # 多 LLM 提供商支持（可选）：

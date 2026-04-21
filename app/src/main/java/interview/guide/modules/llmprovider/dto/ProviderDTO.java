@@ -8,6 +8,5 @@ public record ProviderDTO(
     String baseUrl,
     String maskedApiKey,
     String model,
-    String embeddingModel,
-    boolean enabled
+    String embeddingModel
 ) {}

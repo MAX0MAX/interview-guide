@@ -92,27 +92,56 @@ spring:
 app:
   ai:
     default-provider: dashscope
+    # [REVIEW PROBE] 指向一份测试 yaml 和 .env，观察写操作实际效果
+    config-yaml-path: ${APP_AI_CONFIG_YAML_PATH:tmp/persistence-test/application.yml}
+    config-env-path:  ${APP_AI_CONFIG_ENV_PATH:tmp/persistence-test/.env}
     agent-utils:
       skills-root: ${APP_AI_AGENT_UTILS_SKILLS_ROOT:classpath:skills}
     providers:
       dashscope:
-        base-url: https://dashscope.aliyuncs.com/compatible-mode
+        base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
         api-key: ${AI_BAILIAN_API_KEY}
-        model: ${AI_MODEL:qwen-plus}
+        model: ${AI_MODEL:qwen3.5-flash}
         embedding-model: text-embedding-v3
-        enabled: true
       lmstudio:
         base-url: http://localhost:1234
         api-key: ${PROVIDER_LMSTUDIO_API_KEY:lm-studio}
         model: qwen2.5-7b-instruct
-        enabled: true
+      # ===== 预设 Provider（填完 API Key 后即可使用）=====
+      # Moonshot AI / Kimi（OpenAI 兼容） https://platform.moonshot.cn/
+      kimi:
+        base-url: https://api.moonshot.cn/v1
+        api-key: ${PROVIDER_KIMI_API_KEY:}
+        model: ${PROVIDER_KIMI_MODEL:kimi-latest}
+      # 智谱 AI / GLM（OpenAI 兼容） https://open.bigmodel.cn/
+      glm:
+        base-url: https://open.bigmodel.cn/api/paas/v4
+        api-key: ${PROVIDER_GLM_API_KEY:}
+        model: ${PROVIDER_GLM_MODEL:glm-4-flash}
+        embedding-model: embedding-3
+      # DeepSeek（OpenAI 兼容） https://platform.deepseek.com/
+      deepseek:
+        base-url: https://api.deepseek.com/v1
+        api-key: ${PROVIDER_DEEPSEEK_API_KEY:}
+        model: ${PROVIDER_DEEPSEEK_MODEL:deepseek-chat}
+      # 硅基流动 SiliconFlow（聚合多家开源模型，OpenAI 兼容） https://siliconflow.cn/
+      siliconflow:
+        base-url: https://api.siliconflow.cn/v1
+        api-key: ${PROVIDER_SILICONFLOW_API_KEY:}
+        model: ${PROVIDER_SILICONFLOW_MODEL:Qwen/Qwen2.5-7B-Instruct}
+        embedding-model: BAAI/bge-large-zh-v1.5
+      # 火山引擎 豆包 / Volcengine Ark Doubao（OpenAI 兼容） https://www.volcengine.com/product/ark
+      # 注意：model 填 endpoint-id（形如 ep-xxxx-xxxx），不是模型名
+      volcengine:
+        base-url: https://ark.cn-beijing.volces.com/api/v3
+        api-key: ${PROVIDER_VOLCENGINE_API_KEY:}
+        model: ${PROVIDER_VOLCENGINE_MODEL:}
     module-defaults:
       interview: dashscope
       resume: dashscope
       knowledge-base: dashscope
       voice-interview: dashscope
       review: dashscope
-      interview-schedule: dashscope
     advisors:
       enabled: ${APP_AI_ADVISORS_ENABLED:true}
       tool-call-enabled: ${APP_AI_ADVISORS_TOOL_CALL_ENABLED:true}

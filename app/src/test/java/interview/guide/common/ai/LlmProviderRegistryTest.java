@@ -105,7 +105,7 @@ class LlmProviderRegistryTest {
         ProviderConfig config = new ProviderConfig();
         config.setBaseUrl("https://dashscope.aliyuncs.com/compatible-mode/v1");
         config.setApiKey("dashscope-key");
-        config.setModel("qwen-plus");
+        config.setModel("qwen3.5-flash");
 
         Map<String, ProviderConfig> providers = new HashMap<>();
         providers.put(defaultProviderId, config);

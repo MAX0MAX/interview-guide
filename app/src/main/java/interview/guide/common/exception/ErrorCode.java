@@ -72,7 +72,6 @@ public enum ErrorCode {
     // ========== Provider管理模块错误 11xxx ==========
     PROVIDER_NOT_FOUND(11001, "LLM Provider 不存在"),
     PROVIDER_ALREADY_EXISTS(11002, "LLM Provider 已存在"),
-    PROVIDER_DISABLED(11003, "LLM Provider 已被禁用"),
     PROVIDER_CONFIG_READ_FAILED(11004, "读取 Provider 配置失败"),
     PROVIDER_CONFIG_WRITE_FAILED(11005, "写入 Provider 配置失败"),
     PROVIDER_TEST_FAILED(11006, "Provider 连通性测试失败"),

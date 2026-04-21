@@ -5,6 +5,7 @@ import {
   Loader2, Eye, EyeOff, RefreshCw, Server, Edit2, Mic, Volume2,
 } from 'lucide-react';
 import { llmProviderApi } from '../api/llmProvider';
+import ConfirmDialog from '../components/ConfirmDialog';
 import type {
   ProviderItem, CreateProviderRequest, UpdateProviderRequest,
   ProviderTestResult, AsrConfig, TtsConfig, AsrConfigRequest, TtsConfigRequest,
@@ -16,7 +17,6 @@ const MODULE_LABELS: Record<string, string> = {
   'knowledge-base': '知识库问答',
   'voice-interview': '语音面试',
   'review': '面试复盘',
-  'interview-schedule': '面试日程',
 };
 
 type ActiveTab = 'providers' | 'module-defaults';
@@ -47,6 +47,8 @@ export default function SettingsPage() {
   // Delete confirmation
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [pendingDefaultProviderId, setPendingDefaultProviderId] = useState<string | null>(null);
+  const [settingDefault, setSettingDefault] = useState(false);
 
   // Voice config state
   const [asrConfig, setAsrConfig] = useState<AsrConfig | null>(null);
@@ -67,6 +69,12 @@ export default function SettingsPage() {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   }, []);
+
+  const moduleKeys = Object.keys(MODULE_LABELS);
+
+  const isGlobalDefaultProvider = useCallback((providerId: string) => (
+    moduleKeys.length > 0 && moduleKeys.every((key) => moduleDefaults[key] === providerId)
+  ), [moduleDefaults, moduleKeys]);
 
   const loadData = useCallback(async () => {
     try {
@@ -219,6 +227,8 @@ export default function SettingsPage() {
   };
 
   const handleSetDefault = async (providerId: string) => {
+    setPendingDefaultProviderId(providerId);
+    return;
     if (!window.confirm(`确定要将 "${providerId}" 设为所有模块的默认 Provider 吗？`)) {
       return;
     }
@@ -233,6 +243,32 @@ export default function SettingsPage() {
     } catch (err) {
       console.error('Failed to set default:', err);
       showToast(err instanceof Error ? err.message : '设置默认 Provider 失败', 'error');
+    }
+  };
+
+  const handleConfirmSetDefault = async () => {
+    if (!pendingDefaultProviderId) {
+      return;
+    }
+    setSettingDefault(true);
+    try {
+      const updatedDefaults: Record<string, string> = {};
+      for (const key of moduleKeys) {
+        updatedDefaults[key] = pendingDefaultProviderId;
+      }
+      await llmProviderApi.updateModuleDefaults({ moduleDefaults: updatedDefaults });
+      showToast(`已将 "${pendingDefaultProviderId}" 设为所有模块默认 Provider`);
+      setPendingDefaultProviderId(null);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to set default:', err);
+      if (!(err instanceof Error)) {
+        showToast('设置默认 Provider 失败', 'error');
+        return;
+      }
+      showToast(err instanceof Error ? err.message : '设置默认 Provider 失败', 'error');
+    } finally {
+      setSettingDefault(false);
     }
   };
 
@@ -415,7 +451,10 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {providers.map((provider, index) => (
+                  {providers.map((provider, index) => {
+                    const isGlobalDefault = isGlobalDefaultProvider(provider.id);
+
+                    return (
                     <motion.div
                       key={provider.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -427,31 +466,26 @@ export default function SettingsPage() {
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2.5">
                           <div className={`p-2 rounded-lg ${
-                            provider.enabled
-                              ? 'bg-emerald-100 dark:bg-emerald-900/30'
+                            isGlobalDefault
+                              ? 'bg-primary-100 dark:bg-primary-900/30'
                               : 'bg-slate-100 dark:bg-slate-700'
                           }`}>
                             <Server className={`w-4 h-4 ${
-                              provider.enabled
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : 'text-slate-400 dark:text-slate-500'
+                              isGlobalDefault
+                                ? 'text-primary-600 dark:text-primary-400'
+                                : 'text-slate-600 dark:text-slate-400'
                             }`} />
                           </div>
                           <div>
                             <h3 className="font-semibold text-slate-800 dark:text-white text-sm">
                               {provider.id}
                             </h3>
-                            <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                              provider.enabled
-                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
-                            }`}>
-                              {provider.enabled ? (
-                                <><CheckCircle className="w-3 h-3" /> 已启用</>
-                              ) : (
-                                <><XCircle className="w-3 h-3" /> 已禁用</>
-                              )}
-                            </span>
+                            {isGlobalDefault && (
+                              <span className="ml-1 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                                <Plug className="w-3 h-3" />
+                                全局默认
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -526,8 +560,10 @@ export default function SettingsPage() {
                         </button>
                         <button
                           onClick={() => handleSetDefault(provider.id)}
+                          disabled={isGlobalDefault || settingDefault}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
-                            text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                            text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors
+                            disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent dark:disabled:hover:bg-transparent"
                           title="设为所有模块默认"
                         >
                           <Plug className="w-3.5 h-3.5" />
@@ -544,7 +580,8 @@ export default function SettingsPage() {
                         </button>
                       </div>
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -746,7 +783,7 @@ export default function SettingsPage() {
                           transition-shadow min-w-[160px]"
                       >
                         <option value="">未设置</option>
-                        {providers.filter(p => p.enabled).map(p => (
+                        {providers.map(p => (
                           <option key={p.id} value={p.id}>
                             {p.id} ({p.model})
                           </option>
@@ -756,10 +793,10 @@ export default function SettingsPage() {
                   ))}
                 </div>
 
-                {providers.filter(p => p.enabled).length === 0 && (
+                {providers.length === 0 && (
                   <div className="px-5 py-8 text-center">
                     <p className="text-sm text-slate-400 dark:text-slate-500">
-                      暂无已启用的 Provider，请先在 Provider 管理中添加并启用
+                      暂无 Provider，请先在 Provider 管理中添加
                     </p>
                   </div>
                 )}
@@ -1126,6 +1163,21 @@ export default function SettingsPage() {
           </>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={pendingDefaultProviderId !== null}
+        title="设为默认 Provider"
+        message={`确定要将 "${pendingDefaultProviderId ?? ''}" 设为所有模块的默认 Provider 吗？`}
+        confirmText="确认设置"
+        cancelText="取消"
+        loading={settingDefault}
+        onConfirm={handleConfirmSetDefault}
+        onCancel={() => {
+          if (!settingDefault) {
+            setPendingDefaultProviderId(null);
+          }
+        }}
+      />
 
       {/* Delete confirmation dialog */}
       <AnimatePresence>

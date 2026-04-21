@@ -4,6 +4,5 @@ public record UpdateProviderRequest(
     String baseUrl,
     String apiKey,
     String model,
-    String embeddingModel,
-    Boolean enabled
+    String embeddingModel
 ) {}

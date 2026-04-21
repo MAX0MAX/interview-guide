@@ -81,7 +81,6 @@ public class LlmProviderConfigService {
                 .maskedApiKey(maskApiKey(e.getValue().getApiKey()))
                 .model(e.getValue().getModel())
                 .embeddingModel(e.getValue().getEmbeddingModel())
-                .enabled(e.getValue().isEnabled())
                 .build())
             .toList();
     }
@@ -94,7 +93,6 @@ public class LlmProviderConfigService {
             .maskedApiKey(maskApiKey(config.getApiKey()))
             .model(config.getModel())
             .embeddingModel(config.getEmbeddingModel())
-            .enabled(config.isEnabled())
             .build();
     }
 
@@ -111,8 +109,6 @@ public class LlmProviderConfigService {
             config.setApiKey(request.apiKey());
             config.setModel(request.model());
             config.setEmbeddingModel(request.embeddingModel());
-            config.setEnabled(true);
-
             providers.put(request.id(), config);
 
             String envKey = toEnvKey(request.id());
@@ -130,7 +126,6 @@ public class LlmProviderConfigService {
             if (request.baseUrl() != null) config.setBaseUrl(request.baseUrl());
             if (request.model() != null) config.setModel(request.model());
             if (request.embeddingModel() != null) config.setEmbeddingModel(request.embeddingModel());
-            if (request.enabled() != null) config.setEnabled(request.enabled());
             if (request.apiKey() != null) {
                 config.setApiKey(request.apiKey());
                 String envKey = toEnvKey(id);
@@ -459,7 +454,6 @@ public class LlmProviderConfigService {
         Map<String, ProviderConfig> providers = getProvidersOrThrow();
         Map<String, String> normalizedDefaults = new LinkedHashMap<>();
         Set<String> missingProviders = new LinkedHashSet<>();
-        Set<String> disabledProviders = new LinkedHashSet<>();
 
         defaults.forEach((module, providerId) -> {
             if (module == null || module.isBlank() || providerId == null || providerId.isBlank()) {
@@ -474,10 +468,6 @@ public class LlmProviderConfigService {
                 missingProviders.add(normalizedProviderId);
                 return;
             }
-            if (!config.isEnabled()) {
-                disabledProviders.add(normalizedProviderId);
-                return;
-            }
 
             normalizedDefaults.put(normalizedModule, normalizedProviderId);
         });
@@ -486,12 +476,6 @@ public class LlmProviderConfigService {
             throw new BusinessException(
                 ErrorCode.PROVIDER_NOT_FOUND,
                 "Provider 不存在: " + String.join(", ", missingProviders)
-            );
-        }
-        if (!disabledProviders.isEmpty()) {
-            throw new BusinessException(
-                ErrorCode.PROVIDER_DISABLED,
-                "Provider 已被禁用: " + String.join(", ", disabledProviders)
             );
         }
 
@@ -526,7 +510,6 @@ public class LlmProviderConfigService {
             if (config.getEmbeddingModel() != null) {
                 provider.put("embedding-model", config.getEmbeddingModel());
             }
-            provider.put("enabled", config.isEnabled());
             providers.put(id, provider);
 
             try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {

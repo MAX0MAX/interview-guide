@@ -4,7 +4,6 @@ export interface ProviderItem {
   maskedApiKey: string;
   model: string;
   embeddingModel: string | null;
-  enabled: boolean;
 }
 
 export interface CreateProviderRequest {
@@ -20,7 +19,6 @@ export interface UpdateProviderRequest {
   apiKey?: string;
   model?: string;
   embeddingModel?: string;
-  enabled?: boolean;
 }
 
 export interface ProviderTestResult {

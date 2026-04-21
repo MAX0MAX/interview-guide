@@ -47,6 +47,13 @@ import java.util.regex.Pattern;
 @Slf4j
 public class LlmProviderConfigService {
 
+    /**
+     * ASR apiKey 的 env 占位符名称。用独立 env key 隔离 ASR/TTS/LLM 的密钥域，
+     * 避免 UI 修改语音服务密钥时顺带覆盖 DashScope LLM provider 的密钥。
+     */
+    private static final String VOICE_ASR_ENV_KEY = "VOICE_ASR_API_KEY";
+    private static final String VOICE_TTS_ENV_KEY = "VOICE_TTS_API_KEY";
+
     private final LlmProviderProperties properties;
     private final LlmProviderRegistry registry;
     private final String yamlPath;
@@ -364,7 +371,7 @@ public class LlmProviderConfigService {
             if (request.turnDetectionSilenceDurationMs() != null) asr.setTurnDetectionSilenceDurationMs(request.turnDetectionSilenceDurationMs());
             if (request.apiKey() != null) {
                 asr.setApiKey(request.apiKey());
-                updateEnvValue("AI_BAILIAN_API_KEY", request.apiKey());
+                updateEnvValue(VOICE_ASR_ENV_KEY, request.apiKey());
             }
 
             writeAsrConfigToYaml(asr);
@@ -386,7 +393,7 @@ public class LlmProviderConfigService {
             if (request.volume() != null) tts.setVolume(request.volume());
             if (request.apiKey() != null) {
                 tts.setApiKey(request.apiKey());
-                updateEnvValue("AI_BAILIAN_API_KEY", request.apiKey());
+                updateEnvValue(VOICE_TTS_ENV_KEY, request.apiKey());
             }
 
             writeTtsConfigToYaml(tts);
@@ -691,24 +698,17 @@ public class LlmProviderConfigService {
     }
 
     private void writeAsrConfigToYaml(VoiceInterviewProperties.AsrConfig asr) {
-        if (yamlPath == null || yamlPath.isBlank()) {
-            log.warn("YAML path not configured, skip writing");
-            return;
-        }
         try {
             Yaml yaml = createYaml();
             Path path = Path.of(yamlPath);
-            Map<String, Object> data;
-            try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-                data = yaml.load(reader);
-            }
+            Map<String, Object> data = loadYamlOrEmpty(yaml, path);
 
             Map<String, Object> qwen = getOrCreateMap(
                 getOrCreateMap(getOrCreateMap(data, "app"), "voice-interview"), "qwen");
             Map<String, Object> asrMap = getOrCreateMap(qwen, "asr");
             asrMap.put("url", asr.getUrl());
             asrMap.put("model", asr.getModel());
-            asrMap.put("api-key", "${AI_BAILIAN_API_KEY}");
+            asrMap.put("api-key", "${" + VOICE_ASR_ENV_KEY + "}");
             asrMap.put("language", asr.getLanguage());
             asrMap.put("format", asr.getFormat());
             asrMap.put("sample-rate", asr.getSampleRate());
@@ -727,23 +727,16 @@ public class LlmProviderConfigService {
     }
 
     private void writeTtsConfigToYaml(VoiceInterviewProperties.QwenTtsConfig tts) {
-        if (yamlPath == null || yamlPath.isBlank()) {
-            log.warn("YAML path not configured, skip writing");
-            return;
-        }
         try {
             Yaml yaml = createYaml();
             Path path = Path.of(yamlPath);
-            Map<String, Object> data;
-            try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-                data = yaml.load(reader);
-            }
+            Map<String, Object> data = loadYamlOrEmpty(yaml, path);
 
             Map<String, Object> qwen = getOrCreateMap(
                 getOrCreateMap(getOrCreateMap(data, "app"), "voice-interview"), "qwen");
             Map<String, Object> ttsMap = getOrCreateMap(qwen, "tts");
             ttsMap.put("model", tts.getModel());
-            ttsMap.put("api-key", "${AI_BAILIAN_API_KEY}");
+            ttsMap.put("api-key", "${" + VOICE_TTS_ENV_KEY + "}");
             ttsMap.put("voice", tts.getVoice());
             ttsMap.put("format", tts.getFormat());
             ttsMap.put("sample-rate", tts.getSampleRate());
@@ -758,6 +751,19 @@ public class LlmProviderConfigService {
         } catch (IOException e) {
             throw new BusinessException(ErrorCode.VOICE_CONFIG_WRITE_FAILED,
                 "写入 TTS 配置失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 读取 YAML 文件。文件不存在或为空返回空 map，避免对首次写入时的不存在情况抛 NoSuchFileException。
+     */
+    private Map<String, Object> loadYamlOrEmpty(Yaml yaml, Path path) throws IOException {
+        if (!Files.exists(path)) {
+            return new LinkedHashMap<>();
+        }
+        try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            Map<String, Object> loaded = yaml.load(reader);
+            return loaded != null ? loaded : new LinkedHashMap<>();
         }
     }
 

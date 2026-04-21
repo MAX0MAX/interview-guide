@@ -211,7 +211,8 @@ app:
       asr:
         url: wss://dashscope.aliyuncs.com/api-ws/v1/realtime
         model: qwen3-asr-flash-realtime
-        api-key: ${AI_BAILIAN_API_KEY}
+        # UI 修改 ASR 密钥会写入 VOICE_ASR_API_KEY 环境变量/.env；若未设置则回退到主 AI_BAILIAN_API_KEY。
+        api-key: ${VOICE_ASR_API_KEY:${AI_BAILIAN_API_KEY}}
         language: zh
         format: pcm
         sample-rate: 16000
@@ -225,7 +226,8 @@ app:
       # 音色列表文档：https://help.aliyun.com/zh/model-studio/qwen-tts-realtime
       tts:
         model: qwen3-tts-flash-realtime
-        api-key: ${AI_BAILIAN_API_KEY}
+        # 同 ASR：UI 修改 TTS 密钥落到 VOICE_TTS_API_KEY；缺省回退 AI_BAILIAN_API_KEY。
+        api-key: ${VOICE_TTS_API_KEY:${AI_BAILIAN_API_KEY}}
         voice: Cherry
         format: pcm
         sample-rate: 24000

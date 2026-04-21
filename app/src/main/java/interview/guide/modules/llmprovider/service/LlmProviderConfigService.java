@@ -25,9 +25,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -132,6 +134,7 @@ public class LlmProviderConfigService {
             }
             getProviderConfigOrThrow(id);
             getProvidersOrThrow().remove(id);
+            removeProviderFromModuleDefaults(id);
 
             String envKey = toEnvKey(id);
             removeProviderFromYaml(id);
@@ -174,10 +177,11 @@ public class LlmProviderConfigService {
     }
 
     public void updateModuleDefaults(ModuleDefaultsDTO request) {
-        properties.setModuleDefaults(request.moduleDefaults());
-        writeModuleDefaultsToYaml(request.moduleDefaults());
+        Map<String, String> validatedDefaults = validateAndNormalizeModuleDefaults(request.moduleDefaults());
+        properties.setModuleDefaults(validatedDefaults);
+        writeModuleDefaultsToYaml(validatedDefaults);
         registry.reload();
-        log.info("Updated module defaults: {}", request.moduleDefaults());
+        log.info("Updated module defaults: {}", validatedDefaults);
     }
 
     public void reloadProviders() {
@@ -215,6 +219,69 @@ public class LlmProviderConfigService {
 
     private String toEnvKey(String providerId) {
         return "PROVIDER_" + providerId.toUpperCase().replace("-", "_") + "_API_KEY";
+    }
+
+    private void removeProviderFromModuleDefaults(String providerId) {
+        Map<String, String> currentDefaults = properties.getModuleDefaults();
+        if (currentDefaults == null || currentDefaults.isEmpty()) {
+            return;
+        }
+
+        Map<String, String> updatedDefaults = new LinkedHashMap<>(currentDefaults);
+        boolean changed = updatedDefaults.entrySet().removeIf(entry -> providerId.equals(entry.getValue()));
+        if (!changed) {
+            return;
+        }
+
+        properties.setModuleDefaults(updatedDefaults);
+        writeModuleDefaultsToYaml(updatedDefaults);
+    }
+
+    private Map<String, String> validateAndNormalizeModuleDefaults(Map<String, String> defaults) {
+        if (defaults == null || defaults.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+
+        Map<String, ProviderConfig> providers = getProvidersOrThrow();
+        Map<String, String> normalizedDefaults = new LinkedHashMap<>();
+        Set<String> missingProviders = new LinkedHashSet<>();
+        Set<String> disabledProviders = new LinkedHashSet<>();
+
+        defaults.forEach((module, providerId) -> {
+            if (module == null || module.isBlank() || providerId == null || providerId.isBlank()) {
+                return;
+            }
+
+            String normalizedModule = module.trim();
+            String normalizedProviderId = providerId.trim();
+            ProviderConfig config = providers.get(normalizedProviderId);
+
+            if (config == null) {
+                missingProviders.add(normalizedProviderId);
+                return;
+            }
+            if (!config.isEnabled()) {
+                disabledProviders.add(normalizedProviderId);
+                return;
+            }
+
+            normalizedDefaults.put(normalizedModule, normalizedProviderId);
+        });
+
+        if (!missingProviders.isEmpty()) {
+            throw new BusinessException(
+                ErrorCode.PROVIDER_NOT_FOUND,
+                "Provider 不存在: " + String.join(", ", missingProviders)
+            );
+        }
+        if (!disabledProviders.isEmpty()) {
+            throw new BusinessException(
+                ErrorCode.PROVIDER_DISABLED,
+                "Provider 已被禁用: " + String.join(", ", disabledProviders)
+            );
+        }
+
+        return normalizedDefaults;
     }
 
     private void writeProviderToYaml(String id, ProviderConfig config, String envKey) {

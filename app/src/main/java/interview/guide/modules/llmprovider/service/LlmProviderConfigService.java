@@ -17,6 +17,7 @@ import interview.guide.modules.llmprovider.dto.UpdateProviderRequest;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.service.QwenAsrService;
 import interview.guide.modules.voiceinterview.service.QwenTtsService;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -68,6 +69,55 @@ public class LlmProviderConfigService {
         this.voiceProperties = voiceProperties;
         this.asrService = asrService;
         this.ttsService = ttsService;
+    }
+
+    /**
+     * 启动校验：写路径必须配置并且目录可写。
+     * 没配置 → UI 保存看似成功但磁盘没落盘，重启即丢；这里通过 fail-fast 替代静默日志告警。
+     */
+    @PostConstruct
+    void validateWritablePaths() {
+        if (yamlPath == null || yamlPath.isBlank()) {
+            throw new IllegalStateException(
+                "app.ai.config-yaml-path 未配置：UI 修改 provider 配置将无法持久化。请在 application.yml 或环境变量 APP_AI_CONFIG_YAML_PATH 中指定一个可写的 YAML 文件路径。"
+            );
+        }
+        if (envPath == null || envPath.isBlank()) {
+            throw new IllegalStateException(
+                "app.ai.config-env-path 未配置：UI 新建 provider 的 apiKey 将无法持久化。请在 application.yml 或环境变量 APP_AI_CONFIG_ENV_PATH 中指定一个可写的 .env 文件路径。"
+            );
+        }
+        Path yamlFile = Path.of(yamlPath);
+        Path envFile = Path.of(envPath);
+        assertParentWritable(yamlFile, "app.ai.config-yaml-path");
+        assertParentWritable(envFile, "app.ai.config-env-path");
+        log.info("LlmProviderConfigService initialized: yamlPath={}, envPath={}", yamlPath, envPath);
+    }
+
+    private void assertParentWritable(Path file, String propertyName) {
+        Path parent = file.toAbsolutePath().getParent();
+        if (parent == null) {
+            throw new IllegalStateException(propertyName + " 路径无效: " + file);
+        }
+        if (Files.exists(file)) {
+            if (!Files.isWritable(file)) {
+                throw new IllegalStateException(propertyName + " 对应的文件不可写: " + file);
+            }
+            return;
+        }
+        if (!Files.exists(parent)) {
+            try {
+                Files.createDirectories(parent);
+            } catch (IOException e) {
+                throw new IllegalStateException(
+                    propertyName + " 对应的父目录不存在且无法创建: " + parent + "（" + e.getMessage() + "）",
+                    e
+                );
+            }
+        }
+        if (!Files.isWritable(parent)) {
+            throw new IllegalStateException(propertyName + " 对应的父目录不可写: " + parent);
+        }
     }
 
     public List<ProviderDTO> listProviders() {

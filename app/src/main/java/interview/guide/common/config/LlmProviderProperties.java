@@ -16,7 +16,15 @@ public class LlmProviderProperties {
     private Map<String, ProviderConfig> providers;
     private Map<String, String> moduleDefaults = new HashMap<>();
     private AdvisorConfig advisors = new AdvisorConfig();
+    /**
+     * UI 回写 provider 配置的目标 YAML 文件绝对路径。
+     * 未配置时 {@link interview.guide.modules.llmprovider.service.LlmProviderConfigService}
+     * 在 {@code @PostConstruct} 阶段会抛出异常，避免 UI 保存成功但配置静默丢失。
+     */
     private String configYamlPath;
+    /**
+     * UI 回写 apiKey 的目标 .env 文件绝对路径，同样启动校验。
+     */
     private String configEnvPath;
 
     @Data

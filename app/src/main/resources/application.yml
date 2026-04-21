@@ -92,6 +92,12 @@ spring:
 app:
   ai:
     default-provider: dashscope
+    # UI 通过 Settings 页写 provider 配置时目标 YAML 文件（独立 overrides 文件，不回写主 application.yml）。
+    # 默认落在 ${user.home}/.interview-guide/llm-providers.yml，跨 gradle bootRun / jar / 容器都可写。
+    # 容器部署建议挂载同路径 volume，并通过 APP_AI_CONFIG_YAML_PATH 覆盖到挂载点。
+    config-yaml-path: ${APP_AI_CONFIG_YAML_PATH:${user.home}/.interview-guide/llm-providers.yml}
+    # UI 新建/修改 provider 时 apiKey 落盘目标 .env（以 ${ENV_VAR} 占位符在 YAML 中引用）。
+    config-env-path: ${APP_AI_CONFIG_ENV_PATH:${user.home}/.interview-guide/llm-providers.env}
     agent-utils:
       skills-root: ${APP_AI_AGENT_UTILS_SKILLS_ROOT:classpath:skills}
     providers:

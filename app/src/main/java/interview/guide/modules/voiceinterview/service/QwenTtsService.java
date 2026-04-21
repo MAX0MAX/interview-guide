@@ -75,6 +75,20 @@ public class QwenTtsService {
         this.volume = tts.getVolume();
     }
 
+    public void reload(VoiceInterviewProperties voiceInterviewProperties) {
+        VoiceInterviewProperties.QwenTtsConfig tts = voiceInterviewProperties.getQwen().getTts();
+        this.model = tts.getModel();
+        this.apiKey = tts.getApiKey();
+        this.voice = tts.getVoice();
+        this.format = tts.getFormat();
+        this.sampleRate = tts.getSampleRate();
+        this.mode = tts.getMode();
+        this.languageType = tts.getLanguageType();
+        this.speechRate = tts.getSpeechRate();
+        this.volume = tts.getVolume();
+        log.info("QwenTtsService reloaded: model={}, voice={}", model, voice);
+    }
+
     /**
      * Initialize the TTS service.
      * This method is automatically called by Spring after the service is constructed

@@ -174,7 +174,7 @@ public class LlmProviderConfigService {
             String envKey = toEnvKey(request.id());
             writeProviderToYaml(request.id(), config, envKey);
             appendToEnv(envKey, request.apiKey());
-            registry.reload();
+            registry.invalidate(request.id());
             log.info("Created provider: id={}, baseUrl={}, model={}", request.id(), request.baseUrl(), request.model());
         }
     }
@@ -195,7 +195,7 @@ public class LlmProviderConfigService {
 
             String envKey = toEnvKey(id);
             writeProviderToYaml(id, config, envKey);
-            registry.reload();
+            registry.invalidate(id);
             log.info("Updated provider: id={}", id);
         }
     }
@@ -213,7 +213,7 @@ public class LlmProviderConfigService {
             String envKey = toEnvKey(id);
             removeProviderFromYaml(id);
             removeFromEnv(envKey);
-            registry.reload();
+            registry.invalidate(id);
             log.info("Deleted provider: id={}", id);
         }
     }

@@ -94,7 +94,8 @@ class LlmProviderRegistryTest {
         when(properties.getProviders()).thenReturn(new HashMap<>());
 
         // When & Then
-        assertThrows(IllegalArgumentException.class, () -> registry.getChatClient("unknown"));
+        assertThrows(interview.guide.common.exception.BusinessException.class,
+            () -> registry.getChatClient("unknown"));
     }
 
     @Test

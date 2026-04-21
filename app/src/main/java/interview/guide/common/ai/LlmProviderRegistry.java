@@ -111,11 +111,28 @@ public class LlmProviderRegistry {
 
     /**
      * 清空缓存，重新加载所有 provider。
+     * 仅在批量配置变更（如改 default-provider / module-defaults）时使用；
+     * 单个 provider 改动应优先走 {@link #invalidate(String)}，避免殃及其他 provider 已建立的连接。
      */
     public void reload() {
         int size = clientCache.size();
         clientCache.clear();
         log.info("[LlmProviderRegistry] Cache cleared ({} entries). Next access will re-create clients.", size);
+    }
+
+    /**
+     * 细粒度失效：只清空指定 provider 对应的三种 ChatClient（default / plain / voice），
+     * 其他 provider 的缓存保留。
+     */
+    public void invalidate(String providerId) {
+        if (providerId == null || providerId.isBlank()) {
+            return;
+        }
+        int removed = 0;
+        if (clientCache.remove(providerId) != null) removed++;
+        if (clientCache.remove(providerId + ":plain") != null) removed++;
+        if (clientCache.remove(providerId + ":voice") != null) removed++;
+        log.info("[LlmProviderRegistry] Invalidated {} cached client(s) for provider: {}", removed, providerId);
     }
 
     /**
@@ -181,14 +198,16 @@ public class LlmProviderRegistry {
     }
 
     private OpenAiChatModel buildChatModel(String providerId) {
-        ProviderConfig config = properties.getProviders().get(providerId);
+        Map<String, ProviderConfig> providers = properties.getProviders();
+        ProviderConfig config = providers != null ? providers.get(providerId) : null;
         if (config == null) {
             log.error("[LlmProviderRegistry] Provider config not found: {}", providerId);
-            throw new IllegalArgumentException("Unknown LLM provider: " + providerId);
+            throw new BusinessException(ErrorCode.PROVIDER_NOT_FOUND,
+                "未知的 LLM provider: " + providerId);
         }
         if (!config.isEnabled()) {
             log.warn("[LlmProviderRegistry] Provider is disabled: {}", providerId);
-            throw new BusinessException(ErrorCode.AI_SERVICE_UNAVAILABLE,
+            throw new BusinessException(ErrorCode.PROVIDER_DISABLED,
                 "LLM provider '" + providerId + "' 已被禁用");
         }
 

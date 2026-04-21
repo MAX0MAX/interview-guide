@@ -138,7 +138,7 @@ class LlmProviderConfigServiceTest {
         verify(properties).setModuleDefaults(argThat(defaults ->
             defaults.size() == 1 && "dashscope".equals(defaults.get("resume"))
         ));
-        verify(registry).reload();
+        verify(registry).invalidate("kimi");
     }
 
     @Test
@@ -191,6 +191,49 @@ class LlmProviderConfigServiceTest {
         verify(properties).setModuleDefaults(argThat(defaults ->
             defaults.size() == 1 && "dashscope".equals(defaults.get("interview"))
         ));
+        verify(registry).reload();
+    }
+
+    @Test
+    @DisplayName("setDefaultProvider rejects unknown provider")
+    void testSetDefaultProvider_unknown() {
+        when(properties.getProviders()).thenReturn(new HashMap<>());
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.setDefaultProvider("missing"));
+        assertEquals(ErrorCode.PROVIDER_NOT_FOUND, ex.getErrorCode());
+        verify(properties, never()).setDefaultProvider(anyString());
+    }
+
+    @Test
+    @DisplayName("setDefaultProvider rejects disabled provider")
+    void testSetDefaultProvider_disabled() {
+        Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+        providers.put("kimi", createProviderConfig(false));
+        when(properties.getProviders()).thenReturn(providers);
+
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.setDefaultProvider("kimi"));
+        assertEquals(ErrorCode.PROVIDER_DISABLED, ex.getErrorCode());
+        verify(properties, never()).setDefaultProvider(anyString());
+    }
+
+    @Test
+    @DisplayName("setDefaultProvider rejects blank id")
+    void testSetDefaultProvider_blank() {
+        BusinessException ex = assertThrows(BusinessException.class, () -> service.setDefaultProvider(" "));
+        assertEquals(ErrorCode.PROVIDER_NOT_FOUND, ex.getErrorCode());
+    }
+
+    @Test
+    @DisplayName("setDefaultProvider persists and triggers reload on valid provider")
+    void testSetDefaultProvider_success() {
+        Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+        providers.put("dashscope", createProviderConfig(true));
+        providers.put("kimi", createProviderConfig(true));
+        when(properties.getProviders()).thenReturn(providers);
+        when(properties.getDefaultProvider()).thenReturn("dashscope");
+
+        service.setDefaultProvider("kimi");
+
+        verify(properties).setDefaultProvider("kimi");
         verify(registry).reload();
     }
 

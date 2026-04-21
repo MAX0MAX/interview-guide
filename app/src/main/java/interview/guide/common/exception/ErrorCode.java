@@ -77,7 +77,10 @@ public enum ErrorCode {
     PROVIDER_CONFIG_WRITE_FAILED(11005, "写入 Provider 配置失败"),
     PROVIDER_TEST_FAILED(11006, "Provider 连通性测试失败"),
     PROVIDER_DEFAULT_CANNOT_DELETE(11007, "默认 Provider 不可删除"),
-    MODULE_NOT_FOUND(11008, "模块不存在");
+    MODULE_NOT_FOUND(11008, "模块不存在"),
+    VOICE_CONFIG_READ_FAILED(11009, "读取语音服务配置失败"),
+    VOICE_CONFIG_WRITE_FAILED(11010, "写入语音服务配置失败"),
+    VOICE_CONFIG_TEST_FAILED(11011, "语音服务连通性测试失败");
 
     private final Integer code;
     private final String message;

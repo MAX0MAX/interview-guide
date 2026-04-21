@@ -83,6 +83,21 @@ public class QwenAsrService {
         this.turnDetectionSilenceDurationMs = asr.getTurnDetectionSilenceDurationMs();
     }
 
+    public void reload(VoiceInterviewProperties voiceInterviewProperties) {
+        VoiceInterviewProperties.AsrConfig asr = voiceInterviewProperties.getQwen().getAsr();
+        this.url = asr.getUrl();
+        this.model = asr.getModel();
+        this.apiKey = asr.getApiKey();
+        this.language = asr.getLanguage();
+        this.format = asr.getFormat();
+        this.sampleRate = asr.getSampleRate();
+        this.enableTurnDetection = asr.isEnableTurnDetection();
+        this.turnDetectionType = asr.getTurnDetectionType();
+        this.turnDetectionThreshold = asr.getTurnDetectionThreshold();
+        this.turnDetectionSilenceDurationMs = asr.getTurnDetectionSilenceDurationMs();
+        log.info("QwenAsrService reloaded: model={}, url={}", model, url);
+    }
+
     /**
      * Active ASR sessions map.
      * Key: session ID (user-provided identifier)

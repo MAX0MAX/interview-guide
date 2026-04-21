@@ -248,3 +248,72 @@ String result = structuredOutputInvoker.invokeStructuredOutput(prompt, ChatClien
 | 循环调用 DB | 改用批量操作 |
 | 硬编码密钥 | 安全风险 |
 | `Executors.newXxxThreadPool()` | OOM 风险，用 `ThreadPoolExecutor` |
+
+---
+
+## 十、Cursor Cloud Agent 环境说明
+
+以下内容用于 Cursor Cloud Agent 在远程 VM 上搭建和运行本项目，不影响日常本地开发。
+
+### 1. 架构概览
+
+Spring Boot 4.0 (Java 21) + React 18 (TypeScript, Vite) 应用，面向 AI 面试辅导平台。后端 (`app/`) 依赖 PostgreSQL+pgvector、Redis、MinIO (S3 兼容)。前端 (`frontend/`) 是 Vite dev server，将 `/api` 代理到后端 `localhost:8080`。
+
+### 2. 基础设施服务 (Docker)
+
+从仓库根目录用 `docker compose` 启动依赖服务：
+
+```bash
+sudo docker compose up -d postgres redis minio createbuckets
+```
+
+启动之后还需要从宿主网络创建 MinIO bucket（`createbuckets` init 容器使用 Docker 内部主机名 `minio:9000`，宿主后端访问不到）：
+
+```bash
+sudo docker run --rm --network host --entrypoint /bin/sh minio/mc -c \
+  "/usr/bin/mc alias set myminio http://localhost:9000 minioadmin minioadmin; \
+   /usr/bin/mc mb myminio/interview-guide --ignore-existing; \
+   /usr/bin/mc anonymous set public myminio/interview-guide;"
+```
+
+### 3. 启动后端
+
+```bash
+./gradlew bootRun
+```
+
+后端从仓库根的 `.env` 读取配置（通过 `app/build.gradle` 的 Gradle task 注入）。复制 `.env.example` 为 `.env` 并填入 `AI_BAILIAN_API_KEY` 才能启用 AI 能力。无 key 时应用仍能启动并提供 CRUD 接口，但简历分析、模拟面试、RAG 等 AI 功能会失败。
+
+后端监听 `http://localhost:8080`。
+
+### 4. 启动前端
+
+```bash
+cd frontend && pnpm install && pnpm dev
+```
+
+前端监听 `http://localhost:5173`，Vite 代理 `/api` 到 `localhost:8080`。
+
+### 5. 运行测试
+
+- **后端**：`./gradlew :app:test`（JUnit 5，使用 H2 内存库，不依赖外部服务）。
+- **前端**：`pnpm build`（`tsc && vite build`）。如遇 TS 报错可先用 `pnpm dev` 验证。
+
+### 6. 环境变量：`AI_BAILIAN_API_KEY`
+
+通过 Cursor Cloud Secrets 面板设置。后端从仓库根 `.env` 读取（Gradle `bootRun` task 会注入）。无 key 时：服务能起，CRUD 可用，所有 AI 功能（简历分析、模拟面试、RAG、语音面试）报错。Secret 会自动作为环境变量注入，在 `bootRun` 之前写入 `.env`：
+
+```bash
+cp .env.example .env
+sed -i "s|^AI_BAILIAN_API_KEY=.*|AI_BAILIAN_API_KEY=${AI_BAILIAN_API_KEY}|" .env
+```
+
+### 7. 常见坑
+
+- Docker daemon 需要 `fuse-overlayfs` 存储驱动 + `iptables-legacy`（Cloud Agent VM）。
+- `dockerd` 需要手动启动：`sudo dockerd &>/tmp/dockerd.log &`。
+- `docker compose up -d postgres redis minio createbuckets` 之后，MinIO bucket 必须从宿主网络再创建一次（见上）。
+- `frontend/` 中 `pnpm install` 会提示忽略 `@swc/core`、`esbuild`、`protobufjs` 的构建脚本，非阻塞。
+- `frontend/package.json` 的 `packageManager` 字段固定 pnpm 10.26.2，VM 预装的更新版本兼容。
+- Gradle wrapper 首次会下载 Gradle 8.14（约 2.5 GB JDK 工具链 + 依赖），之后会很快。
+- 简历上传需要 MinIO bucket 已创建且可从 `localhost:9000` 访问；提示 "bucket does not exist" 时重跑宿主网络的 MinIO bucket 创建命令。

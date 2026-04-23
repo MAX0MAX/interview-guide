@@ -11,6 +11,7 @@ import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.service.QwenAsrService;
 import interview.guide.modules.voiceinterview.service.QwenTtsService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,27 @@ class LlmProviderConfigServiceTest {
             asrService,
             ttsService
         );
+    }
+
+    @Nested
+    @DisplayName("启动校验")
+    class Bootstrap {
+
+        @Test
+        @DisplayName("validateWritablePaths 对不可创建的父目录 fail-fast")
+        void validateWritablePathsFailsFastWhenParentUnwritable(@TempDir Path tempDir) throws IOException {
+            Path sentinel = tempDir.resolve("not-a-dir");
+            Files.writeString(sentinel, "");
+            Path unreachableYaml = sentinel.resolve("child/llm-providers.yml");
+
+            when(properties.getConfigYamlPath()).thenReturn(unreachableYaml.toString());
+            when(properties.getConfigEnvPath()).thenReturn(tempDir.resolve(".env").toString());
+
+            LlmProviderConfigService failing = new LlmProviderConfigService(
+                properties, registry, voiceProperties, asrService, ttsService);
+
+            assertThrows(BusinessException.class, failing::validateWritablePaths);
+        }
     }
 
     @Nested
@@ -172,6 +194,47 @@ class LlmProviderConfigServiceTest {
             assertNull(config.getEmbeddingModel());
             verify(registry).reload();
         }
+
+        @Test
+        @DisplayName("updateProvider 对纯空白 embedding model 等价于清空")
+        void updateProviderTreatsBlankEmbeddingModelAsClear() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            LlmProviderProperties.ProviderConfig config = createProviderConfig(
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "secret",
+                "qwen-plus",
+                "text-embedding-v3"
+            );
+            providers.put("dashscope", config);
+            when(properties.getProviders()).thenReturn(providers);
+
+            service.updateProvider("dashscope", new UpdateProviderRequest(null, null, null, "   "));
+
+            assertNull(config.getEmbeddingModel());
+            verify(registry).reload();
+        }
+
+        @Test
+        @DisplayName("updateProvider 拒绝空串 baseUrl / model / apiKey")
+        void updateProviderRejectsBlankRequiredFields() {
+            Map<String, LlmProviderProperties.ProviderConfig> providers = new LinkedHashMap<>();
+            providers.put("dashscope",
+                createProviderConfig("https://dashscope.aliyuncs.com", "secret", "qwen-plus", null));
+            when(properties.getProviders()).thenReturn(providers);
+
+            assertThrows(BusinessException.class, () ->
+                service.updateProvider("dashscope",
+                    new UpdateProviderRequest("", null, null, null)));
+            assertThrows(BusinessException.class, () ->
+                service.updateProvider("dashscope",
+                    new UpdateProviderRequest("   ", null, null, null)));
+            assertThrows(BusinessException.class, () ->
+                service.updateProvider("dashscope",
+                    new UpdateProviderRequest(null, null, "", null)));
+            assertThrows(BusinessException.class, () ->
+                service.updateProvider("dashscope",
+                    new UpdateProviderRequest(null, "  ", null, null)));
+        }
     }
 
     @Nested
@@ -193,6 +256,16 @@ class LlmProviderConfigServiceTest {
             assertEquals(ErrorCode.PROVIDER_NOT_FOUND.getCode(), exception.getCode());
             verify(properties, never()).setModuleDefaults(anyMap());
             verify(registry, never()).reload();
+        }
+
+        @Test
+        @Disabled(
+            "Pending: ProviderConfig.enabled flag + ErrorCode.PROVIDER_DISABLED not yet implemented; "
+                + "restore assertion once 'disable provider but keep config' feature is introduced"
+        )
+        @DisplayName("updateModuleDefaults 拒绝已禁用 provider（占位，待实现）")
+        void updateModuleDefaultsRejectsDisabledProvider() {
+            // 占位：记录缺失能力，避免重新引入 enabled 字段时漏掉回归断言。
         }
 
         @Test

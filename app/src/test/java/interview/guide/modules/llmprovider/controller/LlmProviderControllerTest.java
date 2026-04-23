@@ -4,7 +4,6 @@ import interview.guide.common.result.Result;
 import interview.guide.modules.llmprovider.dto.ModuleDefaultsDTO;
 import interview.guide.modules.llmprovider.dto.ProviderDTO;
 import interview.guide.modules.llmprovider.service.LlmProviderConfigService;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,22 +14,28 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("LlmProviderController Test")
+@DisplayName("LlmProviderController 测试")
 class LlmProviderControllerTest {
 
     @Mock private LlmProviderConfigService configService;
     @InjectMocks private LlmProviderController controller;
 
     @Test
-    @DisplayName("listProviders returns provider list")
-    void testListProviders() {
-        var dto = ProviderDTO.builder()
-            .id("dashscope").baseUrl("http://test").maskedApiKey("sk-***key")
-            .model("qwen").embeddingModel("text-embedding-v3").enabled(true).build();
+    @DisplayName("listProviders 返回 provider 列表")
+    void listProvidersReturnsProviderList() {
+        ProviderDTO dto = ProviderDTO.builder()
+            .id("dashscope")
+            .baseUrl("http://test")
+            .maskedApiKey("sk-***key")
+            .model("qwen")
+            .embeddingModel("text-embedding-v3")
+            .build();
         when(configService.listProviders()).thenReturn(List.of(dto));
 
         Result<List<ProviderDTO>> result = controller.listProviders();
@@ -41,8 +46,8 @@ class LlmProviderControllerTest {
     }
 
     @Test
-    @DisplayName("getModuleDefaults returns defaults")
-    void testGetModuleDefaults() {
+    @DisplayName("getModuleDefaults 返回默认配置")
+    void getModuleDefaultsReturnsDefaults() {
         when(configService.getModuleDefaults())
             .thenReturn(new ModuleDefaultsDTO(Map.of("interview", "dashscope")));
 
@@ -53,8 +58,8 @@ class LlmProviderControllerTest {
     }
 
     @Test
-    @DisplayName("deleteProvider calls service")
-    void testDeleteProvider() {
+    @DisplayName("deleteProvider 调用 service")
+    void deleteProviderCallsService() {
         doNothing().when(configService).deleteProvider("lmstudio");
 
         Result<Void> result = controller.deleteProvider("lmstudio");

@@ -125,7 +125,9 @@ public class LlmProviderConfigService {
 
             if (request.baseUrl() != null) config.setBaseUrl(request.baseUrl());
             if (request.model() != null) config.setModel(request.model());
-            if (request.embeddingModel() != null) config.setEmbeddingModel(request.embeddingModel());
+            if (request.embeddingModel() != null) {
+                config.setEmbeddingModel(normalizeOptionalText(request.embeddingModel()));
+            }
             if (request.apiKey() != null) {
                 config.setApiKey(request.apiKey());
                 String envKey = toEnvKey(id);
@@ -424,6 +426,14 @@ public class LlmProviderConfigService {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
         return normalized;
+    }
+
+    private String normalizeOptionalText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 
     private String toEnvKey(String providerId) {

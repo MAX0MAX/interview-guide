@@ -168,7 +168,7 @@ export default function SettingsPage() {
       const data: UpdateProviderRequest = {
         baseUrl: formBaseUrl.trim(),
         model: formModel.trim(),
-        embeddingModel: formEmbeddingModel.trim() || undefined,
+        embeddingModel: formEmbeddingModel.trim(),
       };
       if (formApiKey.trim()) {
         data.apiKey = formApiKey.trim();

@@ -92,9 +92,8 @@ spring:
 app:
   ai:
     default-provider: dashscope
-    # [REVIEW PROBE] 指向一份测试 yaml 和 .env，观察写操作实际效果
-    config-yaml-path: ${APP_AI_CONFIG_YAML_PATH:tmp/persistence-test/application.yml}
-    config-env-path:  ${APP_AI_CONFIG_ENV_PATH:tmp/persistence-test/.env}
+    config-yaml-path: ${APP_AI_CONFIG_YAML_PATH:app/src/main/resources/application.yml}
+    config-env-path: ${APP_AI_CONFIG_ENV_PATH:.env}
     agent-utils:
       skills-root: ${APP_AI_AGENT_UTILS_SKILLS_ROOT:classpath:skills}
     providers:

@@ -17,6 +17,7 @@ import interview.guide.modules.llmprovider.dto.UpdateProviderRequest;
 import interview.guide.modules.voiceinterview.config.VoiceInterviewProperties;
 import interview.guide.modules.voiceinterview.service.QwenAsrService;
 import interview.guide.modules.voiceinterview.service.QwenTtsService;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -68,6 +69,42 @@ public class LlmProviderConfigService {
         this.voiceProperties = voiceProperties;
         this.asrService = asrService;
         this.ttsService = ttsService;
+    }
+
+    /**
+     * 启动时确保 Provider 配置文件的父目录存在且可写。
+     *
+     * 旧默认值曾指向 {@code tmp/persistence-test/...} 或源码里的 {@code application.yml}，前者会在容器
+     * 重启后丢失，后者会污染 classpath 资源 / git 跟踪文件。这里改为 fail-fast：若配置的路径父目录
+     * 既不存在又无法创建、或存在但不可写，直接抛 {@link BusinessException}，避免 UI 保存接口返回 200
+     * 但实际磁盘无任何落盘。
+     */
+    @PostConstruct
+    void validateWritablePaths() {
+        ensureParentWritable(yamlPath, "config-yaml-path");
+        ensureParentWritable(envPath, "config-env-path");
+    }
+
+    private void ensureParentWritable(String rawPath, String label) {
+        if (rawPath == null || rawPath.isBlank()) {
+            log.warn("{} is not configured; runtime Provider edits will be skipped", label);
+            return;
+        }
+        Path parent = Path.of(rawPath).toAbsolutePath().getParent();
+        if (parent == null) {
+            return;
+        }
+        try {
+            Files.createDirectories(parent);
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED,
+                label + " 的父目录不可创建: " + parent, e);
+        }
+        if (!Files.isWritable(parent)) {
+            throw new BusinessException(ErrorCode.PROVIDER_CONFIG_WRITE_FAILED,
+                label + " 的父目录不可写: " + parent);
+        }
+        log.info("{} resolved to {} (parent writable)", label, rawPath);
     }
 
     public List<ProviderDTO> listProviders() {
@@ -123,15 +160,31 @@ public class LlmProviderConfigService {
         synchronized (configLock) {
             ProviderConfig config = getProviderConfigOrThrow(id);
 
-            if (request.baseUrl() != null) config.setBaseUrl(request.baseUrl());
-            if (request.model() != null) config.setModel(request.model());
+            // baseUrl / model / apiKey 是必填字段：null = 前端未提交该字段（不更新），
+            // 纯空白 = 前端提交了但值无意义（拒绝，避免写出坏配置）。只有 embeddingModel 允许
+            // 用空串显式"清空"，语义上它是可选字段。
+            String trimmedBaseUrl = trimOrNull(request.baseUrl());
+            if (request.baseUrl() != null && trimmedBaseUrl == null) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "baseUrl 不能为空字符串");
+            }
+            String trimmedModel = trimOrNull(request.model());
+            if (request.model() != null && trimmedModel == null) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "model 不能为空字符串");
+            }
+            String trimmedApiKey = trimOrNull(request.apiKey());
+            if (request.apiKey() != null && trimmedApiKey == null) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST, "apiKey 不能为空字符串");
+            }
+
+            if (trimmedBaseUrl != null) config.setBaseUrl(trimmedBaseUrl);
+            if (trimmedModel != null) config.setModel(trimmedModel);
             if (request.embeddingModel() != null) {
                 config.setEmbeddingModel(normalizeOptionalText(request.embeddingModel()));
             }
-            if (request.apiKey() != null) {
-                config.setApiKey(request.apiKey());
+            if (trimmedApiKey != null) {
+                config.setApiKey(trimmedApiKey);
                 String envKey = toEnvKey(id);
-                updateEnvValue(envKey, request.apiKey());
+                updateEnvValue(envKey, trimmedApiKey);
             }
 
             String envKey = toEnvKey(id);
@@ -428,7 +481,15 @@ public class LlmProviderConfigService {
         return normalized;
     }
 
+    /**
+     * 空白归一：{@code null} / 空串 / 纯空白都返回 {@code null}，否则返回 trim 结果。
+     * 用于 {@code embeddingModel} 等"允许显式清空"的可选字段。
+     */
     private String normalizeOptionalText(String value) {
+        return trimOrNull(value);
+    }
+
+    private String trimOrNull(String value) {
         if (value == null) {
             return null;
         }

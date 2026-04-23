@@ -92,8 +92,10 @@ spring:
 app:
   ai:
     default-provider: dashscope
-    config-yaml-path: ${APP_AI_CONFIG_YAML_PATH:app/src/main/resources/application.yml}
-    config-env-path: ${APP_AI_CONFIG_ENV_PATH:.env}
+    # 运行时可写的 Provider 配置落点（与 classpath 主 application.yml 隔离）。
+    # 开发环境默认写到用户主目录下，避免污染源码目录或 jar 内 classpath 资源。
+    config-yaml-path: ${APP_AI_CONFIG_YAML_PATH:${user.home}/.interview-guide/llm-providers.yml}
+    config-env-path: ${APP_AI_CONFIG_ENV_PATH:${user.home}/.interview-guide/llm-providers.env}
     agent-utils:
       skills-root: ${APP_AI_AGENT_UTILS_SKILLS_ROOT:classpath:skills}
     providers:
